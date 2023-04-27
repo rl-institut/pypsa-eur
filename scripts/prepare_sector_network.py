@@ -29,6 +29,7 @@ from pypsa.geo import haversine_pts
 from pypsa.io import import_components_from_dataframe
 from scipy.stats import beta
 from vresutils.costdata import annuity
+from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, get_heat_demand_by_use
 
 logger = logging.getLogger(__name__)
 
@@ -3270,6 +3271,11 @@ if __name__ == "__main__":
     pop_weighted_energy_totals = (
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
+
+    # import total tyndp_de scenario data as df
+    file_path = '../data/scenario/tyndp_de/220228_Updated_Energy_Demand.xlsx'
+    sheet_name = 'OUTPUT_ALL'
+    df_sce_data = import_sce_data(file_path, sheet_name)
 
     patch_electricity_network(n)
 
