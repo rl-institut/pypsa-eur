@@ -1622,6 +1622,7 @@ def add_heat(n, costs):
     logger.info("Add heat sector")
 
     sectors = ["residential", "services"]
+    uses = ["space", "water"]
 
     heat_demand = build_heat_demand(n)
 
@@ -1629,11 +1630,47 @@ def add_heat(n, costs):
 
     # NB: must add costs of central heating afterwards (EUR 400 / kWpeak, 50a, 1% FOM from Fraunhofer ISE)
 
+    cty_codes = ['FR', 'DE', 'GB', 'IT', 'ES', 'PL', 'SE', 'NL', 'BE', 'FI', 'CZ', 'DK', 'PT', 'RO',
+                 'AT', 'BG', 'EE', 'GR', 'LV', 'HU', 'IE', 'SK', 'LT', 'HR', 'LU', 'SI', 'CY', 'MT']
+    nodes_tyndp = pop_layout[pop_layout.ct.isin(cty_codes)].index
+
+    # get scenario demand for heat sector
+    df_sce_heat = get_sce_data_by_sector(df_sce_data, "heat")
+
+    # scale to scenario demand
+    for sector in sectors:
+
+        for use in uses:
+
+            # get regional distributed pes demand and nationally distributed sce demand per sector
+            pes_heat_reg = heat_demand[[f"{sector} {use}"]].sum().unstack() / 1e6 # [nodes_tyndp]
+            sce_heat_nat = get_heat_demand_by_use(df_sce_heat, sector, use, investment_year)
+
+            # preprocess pes demand
+            pes_heat_reg = pes_heat_reg.T
+            pes_heat_reg["cty"] = pes_heat_reg.index.str[:2]
+
+            # distribute national demand using pes distribution
+            reg_fraction = pd.concat([pes_heat_reg["cty"],
+                                      pes_heat_reg.groupby("cty").transform(lambda x: x / x.sum())],
+                                      axis=1).reset_index().set_index("cty")
+
+            # regionally distribute scale factor
+            sce_heat_reg = reg_fraction.index.map(sce_heat_nat[f"{sector} {use}"]) * \
+                           reg_fraction.set_index("name")[f"{sector} {use}"]
+
+            # regionally resoluted scale factor
+            scale_factor_reg = sce_heat_reg.div(pes_heat_reg[f"{sector} {use}"]).fillna(1)
+
+            # update heat demand to sce data using regional scale factor
+            heat_demand[f"{sector} {use}"] = heat_demand[f"{sector} {use}"].mul(scale_factor_reg, axis=1)
+
     # exogenously reduce space heat demand
     if options["reduce_space_heat_exogenously"]:
         dE = get(options["reduce_space_heat_exogenously_factor"], investment_year)
         logger.info(f"Assumed space heat reduction of {dE:.2%}")
         for sector in sectors:
+            # TODO: set to true in config reduces just countries not considered within pes
             heat_demand[sector + " space"] = (1 - dE) * heat_demand[sector + " space"]
 
     heat_systems = [
@@ -3236,13 +3273,13 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "prepare_sector_network",
-            configfiles="test/config.overnight.yaml",
+            configfiles="config.yaml",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="37",
+            ll="v1.0",
+            sector_opts="24H-T-H-B-I-A-solar+p3-dist1",
+            planning_horizons="2050",
         )
 
     logging.basicConfig(level=snakemake.config["logging"]["level"])
