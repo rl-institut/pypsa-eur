@@ -3310,7 +3310,7 @@ if __name__ == "__main__":
     )
 
     # import total tyndp_de scenario data as df
-    file_path = '../data/scenario/tyndp_de/220228_Updated_Energy_Demand.xlsx'
+    file_path = snakemake.input.tyndp_demand
     sheet_name = 'OUTPUT_ALL'
     df_sce_data = import_sce_data(file_path, sheet_name)
 
