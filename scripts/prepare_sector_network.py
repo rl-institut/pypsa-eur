@@ -2441,7 +2441,7 @@ def add_industry(n, costs):
     sce_gas_nat = sce_ind_nat['methane']
     pes_gas_reg = industrial_demand.loc[nodes, "methane"] / 1e6
     # scale and distribute
-    gas_demand = scale_and_distribute_national_demand(sce_gas_nat, pes_gas_reg, nodes)
+    gas_demand = scale_and_distribute_national_demand(sce_gas_nat, pes_gas_reg, nodes) * 1e6
     # industrial_demand.loc[nodes, "methane"] # pes
 
     if options["gas_network"]:
