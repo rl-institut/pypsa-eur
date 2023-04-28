@@ -29,7 +29,9 @@ from pypsa.geo import haversine_pts
 from pypsa.io import import_components_from_dataframe
 from scipy.stats import beta
 from vresutils.costdata import annuity
-from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, get_heat_demand_by_use
+from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
+                                    get_heat_demand_by_use, get_industrial_demand_by_carrier, \
+                                    scale_and_distribute_national_demand
 
 logger = logging.getLogger(__name__)
 
@@ -1659,7 +1661,7 @@ def add_heat(n, costs):
             sce_heat_reg = reg_fraction.index.map(sce_heat_nat[f"{sector} {use}"]) * \
                            reg_fraction.set_index("name")[f"{sector} {use}"]
 
-            # regionally resoluted scale factor
+            # regionally resoluted scale factor, 1 if country not included
             scale_factor_reg = sce_heat_reg.div(pes_heat_reg[f"{sector} {use}"]).fillna(1)
 
             # update heat demand to sce data using regional scale factor
@@ -2375,6 +2377,11 @@ def add_industry(n, costs):
         pd.read_csv(snakemake.input.industrial_demand, index_col=0) * 1e6
     ) * nyears
 
+    # get industrial demand data for scenario
+    df_sce_ind = get_sce_data_by_sector(df_sce_data, "industry")
+    # get scenarios industrial demand by carrier on national level
+    sce_ind_nat = get_industrial_demand_by_carrier(df_sce_ind, investment_year)
+
     n.madd(
         "Bus",
         spatial.biomass.industry,
@@ -2383,15 +2390,22 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
+    # get scenario industrial solid biomass demand
+    sce_bio_nat = sce_ind_nat['biomass']
+
     if options.get("biomass_spatial", options["biomass_transport"]):
-        p_set = (
-            industrial_demand.loc[spatial.biomass.locations, "solid biomass"].rename(
-                index=lambda x: x + " solid biomass for industry"
-            )
-            / nhours
-        )
+
+        # get pes industrial solid biomass demand
+        pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"] / 1e6
+        # scale and distribute
+        spatial_bio_demand = scale_and_distribute_national_demand(sce_bio_nat, pes_bio_reg,
+                                                                  spatial.biomass.locations)
+        p_set = spatial_bio_demand.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
+
     else:
-        p_set = industrial_demand["solid biomass"].sum() / nhours
+        # replace pes demand with scenario demand
+        # p_set = industrial_demand["solid biomass"].sum() / nhours # pes
+        p_set = sce_bio_nat.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -2438,7 +2452,13 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
-    gas_demand = industrial_demand.loc[nodes, "methane"] / nhours
+    # get pes and scenario industrial gas demand
+    sce_gas_nat = sce_ind_nat['methane']
+    pes_gas_reg = industrial_demand.loc[nodes, "methane"] / 1e6
+    # scale and distribute
+    spatial_gas_demand = scale_and_distribute_national_demand(sce_gas_nat, pes_gas_reg, nodes)
+    gas_demand = spatial_gas_demand.rename(index=lambda x: x + " solid biomass for industry") * 1e6
+    # industrial_demand.loc[nodes, "methane"] # pes
 
     if options["gas_network"]:
         spatial_gas_demand = gas_demand.rename(index=lambda x: x + " gas for industry")
@@ -2450,7 +2470,7 @@ def add_industry(n, costs):
         spatial.gas.industry,
         bus=spatial.gas.industry,
         carrier="gas for industry",
-        p_set=spatial_gas_demand,
+        p_set=spatial_gas_demand / nhours,
     )
 
     n.madd(
@@ -2484,13 +2504,21 @@ def add_industry(n, costs):
         lifetime=costs.at["cement capture", "lifetime"],
     )
 
+    # get pes and scenario industrial hydrogen demand
+    sce_hyd_nat = sce_ind_nat['hydrogen']
+    pes_hyd_reg = industrial_demand.loc[nodes, "hydrogen"] / 1e6
+    # scale and distribute #TODO fillna for eg DK
+    spatial_hyd_demand = scale_and_distribute_national_demand(sce_hyd_nat, pes_hyd_reg, nodes)
+    hyd_demand = spatial_hyd_demand * 1e6
+    # industrial_demand.loc[nodes, "hydrogen"] # pes
+
     n.madd(
         "Load",
         nodes,
         suffix=" H2 for industry",
         bus=nodes + " H2",
         carrier="H2 for industry",
-        p_set=industrial_demand.loc[nodes, "hydrogen"] / nhours,
+        p_set=hyd_demand / nhours,
     )
 
     shipping_hydrogen_share = get(options["shipping_hydrogen_share"], investment_year)
@@ -2717,7 +2745,8 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("HVC_demand_factor", 1)
-    p_set = demand_factor * industrial_demand.loc[nodes, "naphtha"].sum() / nhours
+    # industrial_demand.loc[nodes, "naphtha"].sum() # pes
+    p_set = demand_factor * sce_ind_nat['liquids'].sum() * 1e6 / nhours
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
 
@@ -2765,6 +2794,14 @@ def add_industry(n, costs):
         p_set=-co2,
     )
 
+    # get pes and scenario industrial LT heat demand
+    sce_lth_nat = sce_ind_nat['low_enthalpy_heat']
+    pes_lth_reg = industrial_demand.loc[nodes, "low-temperature heat"] / 1e6
+    # scale and distribute
+    spatial_lth_demand = scale_and_distribute_national_demand(sce_lth_nat, pes_lth_reg, nodes)
+    lth_demand = spatial_lth_demand * 1e6
+    # industrial_demand.loc[nodes, "low-temperature heat"] # pes
+
     # TODO simplify bus expression
     n.madd(
         "Load",
@@ -2777,8 +2814,17 @@ def add_industry(n, costs):
             for node in nodes
         ],
         carrier="low-temperature heat for industry",
-        p_set=industrial_demand.loc[nodes, "low-temperature heat"] / nhours,
+        p_set=lth_demand / nhours,
     )
+
+    # get pes and scenario industrial electricity demand
+    sce_cel_nat = sce_ind_nat['current electricity'] * 1e6
+    pes_cel_reg = industrial_demand.loc[nodes, "current electricity"]
+    # scale and distribute
+    spatial_curr_ele_demand = scale_and_distribute_national_demand(sce_cel_nat, pes_cel_reg, nodes)
+
+    # workaround: fill pes data into nan values #TODO
+    industrial_demand["current electricity"].update(spatial_curr_ele_demand[spatial_curr_ele_demand.notnull()])
 
     # remove today's industrial electricity demand by scaling down total electricity demand
     for ct in n.buses.country.dropna().unique():
@@ -2796,13 +2842,21 @@ def add_industry(n, costs):
         )
         n.loads_t.p_set[loads_i] *= factor
 
+    # get pes and scenario industrial electricity demand
+    sce_ele_nat = sce_ind_nat['electricity']
+    pes_ele_reg = industrial_demand.loc[nodes, "electricity"] / 1e6
+    # scale and distribute
+    spatial_ele_demand = scale_and_distribute_national_demand(sce_ele_nat, pes_ele_reg, nodes)
+    ele_demand = spatial_ele_demand * 1e6
+    # industrial_demand.loc[nodes, "electricity"] # pes
+
     n.madd(
         "Load",
         nodes,
         suffix=" industry electricity",
         bus=nodes,
         carrier="industry electricity",
-        p_set=industrial_demand.loc[nodes, "electricity"] / nhours,
+        p_set=ele_demand / nhours,
     )
 
     n.madd(
@@ -3273,7 +3327,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "prepare_sector_network",
-            configfiles="config.yaml",
+            configfiles="config/config.yaml",
             simpl="",
             opts="",
             clusters="37",
