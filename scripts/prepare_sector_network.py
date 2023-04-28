@@ -1632,10 +1632,6 @@ def add_heat(n, costs):
 
     # NB: must add costs of central heating afterwards (EUR 400 / kWpeak, 50a, 1% FOM from Fraunhofer ISE)
 
-    cty_codes = ['FR', 'DE', 'GB', 'IT', 'ES', 'PL', 'SE', 'NL', 'BE', 'FI', 'CZ', 'DK', 'PT', 'RO',
-                 'AT', 'BG', 'EE', 'GR', 'LV', 'HU', 'IE', 'SK', 'LT', 'HR', 'LU', 'SI', 'CY', 'MT']
-    nodes_tyndp = pop_layout[pop_layout.ct.isin(cty_codes)].index
-
     # get scenario demand for heat sector
     df_sce_heat = get_sce_data_by_sector(df_sce_data, "heat")
 
@@ -1645,24 +1641,13 @@ def add_heat(n, costs):
         for use in uses:
 
             # get regional distributed pes demand and nationally distributed sce demand per sector
-            pes_heat_reg = heat_demand[[f"{sector} {use}"]].sum().unstack() / 1e6 # [nodes_tyndp]
+            pes_heat_reg = heat_demand[[f"{sector} {use}"]].sum().unstack().T / 1e6
             sce_heat_nat = get_heat_demand_by_use(df_sce_heat, sector, use, investment_year)
-
-            # preprocess pes demand
-            pes_heat_reg = pes_heat_reg.T
-            pes_heat_reg["cty"] = pes_heat_reg.index.str[:2]
-
-            # distribute national demand using pes distribution
-            reg_fraction = pd.concat([pes_heat_reg["cty"],
-                                      pes_heat_reg.groupby("cty").transform(lambda x: x / x.sum())],
-                                      axis=1).reset_index().set_index("cty")
-
-            # regionally distribute scale factor
-            sce_heat_reg = reg_fraction.index.map(sce_heat_nat[f"{sector} {use}"]) * \
-                           reg_fraction.set_index("name")[f"{sector} {use}"]
-
-            # regionally resoluted scale factor, 1 if country not included
-            scale_factor_reg = sce_heat_reg.div(pes_heat_reg[f"{sector} {use}"]).fillna(1)
+            # scale and distribute
+            sce_heat_reg = scale_and_distribute_national_demand(sce_heat_nat[f"{sector} {use}"],
+                                                                pes_heat_reg[f"{sector} {use}"],
+                                                                pop_layout.ct.index)
+            scale_factor_reg = sce_heat_reg.div(pes_heat_reg[f"{sector} {use}"])
 
             # update heat demand to sce data using regional scale factor
             heat_demand[f"{sector} {use}"] = heat_demand[f"{sector} {use}"].mul(scale_factor_reg, axis=1)
