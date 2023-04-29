@@ -8,6 +8,7 @@ def import_sce_data(file_path, sheet_name):
         '''
         `Scenario` == 'Distributed Energy' & \
         `Output_type` == 'Energy_demand' & \
+        `Country` != ['CY','MT'] & \
         `Sector` == ['Residential','Tertiary','Agriculture','Transport','Industry']
         ''').drop(['Scenario', 'Output_type'], axis=1).replace({'Country': {'UK': 'GB'}}) \
         .apply(lambda x: x.str.lower() if x.name in ['Sector', 'Subsector', 'Energy_carrier'] else x) \
@@ -88,22 +89,8 @@ def get_industrial_demand_by_carrier(df_ind, year):
 
     return df
 
-def scale_and_distribute_national_demand(sce_demand_nat, pes_demand_reg, rgn_ids):
+def distribute_sce_demand_by_pop_layout(sce_demand_nat, pop_layout):
 
-    # pes demand is regionally resoluted, sce demand nationally
-    cty_ids = rgn_ids.str[:2] # mapping
+    sce_demand_reg = pop_layout.ct.map(sce_demand_nat).mul(pop_layout.fraction)
 
-    # aggregate pes demand to national level
-    pes_dem_nat = pes_demand_reg.groupby(cty_ids).sum()
-    # scenario demand is nationally resoluted
-    sce_dem_nat = sce_demand_nat
-
-    # scale factor national / regional distributed
-    scale_factor_nat = sce_dem_nat.div(pes_dem_nat)
-    # scale_factor_nat = scale_factor_nat.fillna(scale_factor_nat.mean()) # TODO: valid?
-    scale_factor_reg = cty_ids.map(scale_factor_nat)
-
-    # scale demand to scenario values
-    sce_dem_reg = pes_demand_reg.mul(scale_factor_reg)
-
-    return sce_dem_reg
+    return sce_demand_reg
