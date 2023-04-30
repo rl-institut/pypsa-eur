@@ -89,8 +89,35 @@ def get_industrial_demand_by_carrier(df_ind, year):
 
     return df
 
-def distribute_sce_demand_by_pop_layout(sce_demand_nat, pop_layout):
+def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layout):
 
-    sce_demand_reg = pop_layout.ct.map(sce_demand_nat).mul(pop_layout.fraction)
+    pes_demand_reg['cty'] = pes_demand_reg.index.str[:2]
+    pes_demand_reg['fraction'] = pes_demand_reg.groupby("cty").transform(lambda x: x / x.sum())
+
+    # in case pes demand is zero, but sce demand not - weight based on population
+    if pes_demand_reg.fraction.isnull().any():
+        pes_demand_reg['fraction'] = pes_demand_reg.fraction.fillna(pop_layout.fraction)
+
+    sce_demand_reg = pes_demand_reg.cty.map(sce_demand_nat).mul(pes_demand_reg.fraction)
 
     return sce_demand_reg
+
+def scale_and_distribute_national_demand(sce_demand_nat, pes_demand_reg, rgn_ids):
+
+    # pes demand is regionally resoluted, sce demand nationally
+    cty_ids = rgn_ids.str[:2] # mapping
+
+    # aggregate pes demand to national level
+    pes_dem_nat = pes_demand_reg.groupby(cty_ids).sum()
+    # scenario demand is nationally resoluted
+    sce_dem_nat = sce_demand_nat
+
+    # scale factor national / regional distributed
+    scale_factor_nat = sce_dem_nat.div(pes_dem_nat)
+    # scale_factor_nat = scale_factor_nat.fillna(scale_factor_nat.mean()) # TODO: valid?
+    scale_factor_reg = cty_ids.map(scale_factor_nat)
+
+    # scale demand to scenario values
+    sce_dem_reg = pes_demand_reg.mul(scale_factor_reg)
+
+    return sce_dem_reg
