@@ -30,7 +30,8 @@ from pypsa.io import import_components_from_dataframe
 from scipy.stats import beta
 from vresutils.costdata import annuity
 from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
-                                    get_heat_demand_by_use, get_industrial_demand_by_carrier, \
+                                    get_heat_demand_by_use, get_elec_demand_by_use, \
+                                    get_industrial_demand_by_carrier, \
                                     distribute_sce_demand_by_pes_layout
 
 logger = logging.getLogger(__name__)
@@ -3352,6 +3353,26 @@ if __name__ == "__main__":
     df_sce_data = import_sce_data(file_path, sheet_name)
 
     patch_electricity_network(n)
+
+    # get scenarios electricity demand for buildings
+    df_sce_buil = get_sce_data_by_sector(df_sce_data, "buildings")
+    sce_ele_res = get_elec_demand_by_use(df_sce_buil, "residential", investment_year)
+    sce_ele_ser = get_elec_demand_by_use(df_sce_buil, "services", investment_year)
+    # get scenarios current electricity demand for industry
+    df_sce_ind = get_sce_data_by_sector(df_sce_data, "industry")
+    sce_ind_cel = get_industrial_demand_by_carrier(df_sce_ind, investment_year)['current electricity']
+
+    # get regional distributed pes demand and nationally distributed sce demand per sector
+    sce_ele_nat = pd.concat([sce_ele_res, sce_ele_ser, sce_ind_cel], axis=1).sum(axis=1)
+    pes_ele_reg = n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].sum().to_frame() / 1e6
+
+    # scale and distribute
+    sce_ele_reg = distribute_sce_demand_by_pes_layout(sce_ele_nat, pes_ele_reg, pop_layout)
+    scale_factor = sce_ele_reg.div(pes_ele_reg[0])
+
+    # update electricity demand to sce data using regional scale factor
+    n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"] = \
+        n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].mul(scale_factor, axis=1)
 
     spatial = define_spatial(pop_layout.index, options)
 

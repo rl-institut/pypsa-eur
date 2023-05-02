@@ -58,6 +58,19 @@ def get_heat_demand_by_use(df_buil, subsector, use, year):
 
     return df
 
+def get_elec_demand_by_use(df_buil, subsector, year):
+
+    df = df_buil.query(
+        f'''
+        `Sector` == '{subsector}' & \
+        `Energy_carrier` == ['electricity'] & \
+        `Year` == {year}
+        ''').drop(['Sector','Subsector','Energy_carrier','Year'], axis=1) \
+        .rename(columns={"Value": f"{subsector}"}) \
+        .groupby('Country').sum()
+
+    return df
+
 
 # TODO: discuss how to deal with LT heat
 def get_industrial_demand_by_carrier(df_ind, year):
