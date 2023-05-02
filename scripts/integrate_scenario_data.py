@@ -18,18 +18,17 @@ def import_sce_data(file_path, sheet_name):
 
 
 def get_sce_data_by_sector(df, sector):
-    if sector == 'heat':
 
-        df_heat = df.query(
+    if sector == 'buildings':
+
+        df_buil = df.query(
             '''
-                `Sector` == ['residential','tertiary'] & \
-                `Subsector` == ['space_heating', 'water_heating'] & \
-                `Energy_carrier` == 'all'
-                ''').drop(['Energy_carrier', 'Sector_viz_platform'], axis=1) \
-            .replace({'Sector': {'tertiary': 'services'}}) \
-            .apply(lambda x: x.str[:-8] if x.name in ['Subsector'] else x)
+            `Sector` == ['residential','tertiary'] & \
+                `Energy_carrier` == ['electricity','hydrogen','methane','liquids','solids','biomass','others']
+            ''').drop(['Sector_viz_platform'], axis=1) \
+            .replace({'Sector': {'tertiary': 'services'}})
 
-        return df_heat
+        return df_buil
 
     elif sector == 'industry':
 
@@ -45,20 +44,24 @@ def get_sce_data_by_sector(df, sector):
         return df
 
 
-def get_heat_demand_by_use(df_heat, sector, use, year):
-    df = df_heat.query(
+def get_heat_demand_by_use(df_buil, subsector, use, year):
+
+    df = df_buil.query(
         f'''
-        `Sector` == '{sector}' & \
-        `Subsector` == '{use}' & \
+        `Sector` == '{subsector}' & \
+        `Subsector` == '{use}_heating' & \
+        `Energy_carrier` == ['hydrogen','methane','liquids','solids','biomass','others'] & \
         `Year` == {year}
-        ''').drop(['Sector', 'Subsector', 'Year'], axis=1) \
-        .rename(columns={"Value": f"{sector} {use}"})
+        ''').drop(['Sector', 'Subsector', 'Energy_carrier', 'Year'], axis=1) \
+        .rename(columns={"Value": f"{subsector} {use}"}) \
+        .groupby('Country').sum()
 
     return df
 
 
 # TODO: discuss how to deal with LT heat
 def get_industrial_demand_by_carrier(df_ind, year):
+
     df = df_ind.query(
         f'''
         `Energy_carrier` == ['hydrogen', 'electricity', 'biomass', 'liquids', 'methane'] & \

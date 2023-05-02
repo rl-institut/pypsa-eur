@@ -1632,8 +1632,8 @@ def add_heat(n, costs):
 
     # NB: must add costs of central heating afterwards (EUR 400 / kWpeak, 50a, 1% FOM from Fraunhofer ISE)
 
-    # get scenario demand for heat sector
-    df_sce_heat = get_sce_data_by_sector(df_sce_data, "heat")
+    # get scenario demand for buildings sector
+    df_sce_buil = get_sce_data_by_sector(df_sce_data, "buildings")
 
     # scale to scenario demand
     for sector in sectors:
@@ -1642,7 +1642,7 @@ def add_heat(n, costs):
 
             # get regional distributed pes demand and nationally distributed sce demand per sector
             pes_heat_reg = heat_demand[[f"{sector} {use}"]].sum().unstack().T / 1e6
-            sce_heat_nat = get_heat_demand_by_use(df_sce_heat, sector, use, investment_year)
+            sce_heat_nat = get_heat_demand_by_use(df_sce_buil, sector, use, investment_year)
 
             # scale and distribute
             sce_heat_reg = distribute_sce_demand_by_pes_layout(sce_heat_nat[f"{sector} {use}"],
