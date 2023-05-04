@@ -1439,6 +1439,14 @@ def add_land_transport(n, costs):
 
     nodes = pop_layout.index
 
+    # get scenario transport demand data for land transport
+    df_sce_tran = get_sce_data_by_sector(df_sce_data, 'transport')
+    sce_ltr_all = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'all', investment_year)
+
+    # get scenario transport BEV land transport
+    sce_ltr_ele = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'electricity', investment_year)
+    electric_share = sce_ltr_ele.sum() / sce_ltr_all.sum()
+
     if electric_share > 0:
         n.add("Carrier", "Li ion")
 
@@ -1450,16 +1458,20 @@ def add_land_transport(n, costs):
             carrier="Li ion",
             unit="MWh_el",
         )
+        pes_land_transport = (transport[nodes] + cycling_shift(transport[nodes], 1)
+                              + cycling_shift(transport[nodes], 2)) / 3
+        # p_set = pes_land_transport * electric_share
 
-        p_set = (
-            electric_share
-            * (
-                transport[nodes]
-                + cycling_shift(transport[nodes], 1)
-                + cycling_shift(transport[nodes], 2)
-            )
-            / 3
-        )
+        # get regional distributed pes demand and nationally distributed sce demand
+        pes_ltr_ele_reg = pes_land_transport.sum().to_frame() / 1e6
+        sce_ltr_ele_nat = sce_ltr_ele
+
+        # scale and distribute
+        sce_ltr_ele_reg = distribute_sce_demand_by_pes_layout(sce_ltr_ele_nat, pes_ltr_ele_reg, pop_layout)
+        scale_factor = sce_ltr_ele_reg.div(pes_ltr_ele_reg[0])
+
+        # update BEV demand to sce data using regional scale factor
+        p_set_ltr_ele = pes_land_transport.mul(scale_factor, axis=1)
 
         n.madd(
             "Load",
@@ -1467,10 +1479,14 @@ def add_land_transport(n, costs):
             suffix=" land transport EV",
             bus=nodes + " EV battery",
             carrier="land transport EV",
-            p_set=p_set,
+            p_set=p_set_ltr_ele,
         )
 
-        p_nom = number_cars * options.get("bev_charge_rate", 0.011) * electric_share
+        # TODO: implement number cars yes/no?
+        # regionally distribute electric share
+        electric_share_reg = pes_ltr_ele_reg.cty.map(sce_ltr_ele.div(sce_ltr_all))
+        p_nom = number_cars.mul(electric_share_reg) * options.get("bev_charge_rate", 0.011)
+        # p_nom = number_cars * options.get("bev_charge_rate", 0.011) * electric_share
 
         n.madd(
             "Link",
@@ -1503,10 +1519,9 @@ def add_land_transport(n, costs):
 
     if electric_share > 0 and options["bev_dsm"]:
         e_nom = (
-            number_cars
+            number_cars.mul(electric_share_reg)
             * options.get("bev_energy", 0.05)
             * options["bev_availability"]
-            * electric_share
         )
 
         n.madd(
@@ -1521,17 +1536,38 @@ def add_land_transport(n, costs):
             e_min_pu=dsm_profile[nodes],
         )
 
+    # get scenario transport FCEV land transport
+    sce_ltr_hyd = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'hydrogen', investment_year)
+    fuel_cell_share = sce_ltr_hyd.sum() / sce_ltr_all.sum()
+
     if fuel_cell_share > 0:
+
+        pes_land_transport = transport[nodes]
+        # p_set = fuel_cell_share / options["transport_fuel_cell_efficiency"] * pes_land_transport
+
+        # get regional distributed pes demand and nationally distributed sce demand
+        pes_ltr_hyd_reg = pes_land_transport.sum().to_frame() / 1e6
+        sce_ltr_hyd_nat = sce_ltr_hyd
+
+        # scale and distribute
+        sce_ltr_hyd_reg = distribute_sce_demand_by_pes_layout(sce_ltr_hyd_nat, pes_ltr_hyd_reg, pop_layout)
+        scale_factor = sce_ltr_hyd_reg.div(pes_ltr_hyd_reg[0])
+
+        # update FCEV demand to sce data using regional scale factor
+        p_set_ltr_hyd = pes_land_transport.mul(scale_factor, axis=1)
+
         n.madd(
             "Load",
             nodes,
             suffix=" land transport fuel cell",
             bus=nodes + " H2",
             carrier="land transport fuel cell",
-            p_set=fuel_cell_share
-            / options["transport_fuel_cell_efficiency"]
-            * transport[nodes],
+            p_set=p_set_ltr_hyd,
         )
+
+    # get scenario transport ICEV land transport
+    sce_ltr_liq = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'liquids', investment_year)
+    ice_share = sce_ltr_liq.sum() / sce_ltr_all.sum()
 
     if ice_share > 0:
         if "oil" not in n.buses.carrier.unique():
@@ -1543,7 +1579,21 @@ def add_land_transport(n, costs):
                 unit="MWh_LHV",
             )
 
-        ice_efficiency = options["transport_internal_combustion_efficiency"]
+
+        pes_land_transport = transport[nodes]
+        # ice_efficiency = options["transport_internal_combustion_efficiency"]
+        # p_set = ice_share / ice_efficiency * transport[nodes]
+
+        # get regional distributed pes demand and nationally distributed sce demand
+        pes_ltr_liq_reg = pes_land_transport.sum().to_frame() / 1e6
+        sce_ltr_liq_nat = sce_ltr_liq
+
+        # scale and distribute
+        sce_ltr_liq_reg = distribute_sce_demand_by_pes_layout(sce_ltr_liq_nat, pes_ltr_liq_reg, pop_layout)
+        scale_factor = sce_ltr_liq_reg.div(pes_ltr_liq_reg[0])
+
+        # update ICEV demand to sce data using regional scale factor
+        p_set_ltr_liq = pes_land_transport.mul(scale_factor, axis=1)
 
         n.madd(
             "Load",
@@ -1551,13 +1601,11 @@ def add_land_transport(n, costs):
             suffix=" land transport oil",
             bus=spatial.oil.nodes,
             carrier="land transport oil",
-            p_set=ice_share / ice_efficiency * transport[nodes],
+            p_set=p_set_ltr_liq,
         )
 
         co2 = (
-            ice_share
-            / ice_efficiency
-            * transport[nodes].sum().sum()
+            p_set_ltr_liq.sum().sum()
             / nhours
             * costs.at["oil", "CO2 intensity"]
         )

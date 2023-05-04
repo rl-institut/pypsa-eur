@@ -24,11 +24,21 @@ def get_sce_data_by_sector(df, sector):
         df_buil = df.query(
             '''
             `Sector` == ['residential','tertiary'] & \
-                `Energy_carrier` == ['electricity','hydrogen','methane','liquids','solids','biomass','others']
+            `Energy_carrier` != 'all'
             ''').drop(['Sector_viz_platform'], axis=1) \
             .replace({'Sector': {'tertiary': 'services'}})
 
         return df_buil
+
+    elif sector == 'transport':
+
+        df_tra = df.query(
+            '''
+            `Sector` == 'transport' & \
+            `Energy_carrier` != 'all'
+            ''').drop(['Sector_viz_platform'], axis=1)
+
+        return df_tra
 
     elif sector == 'industry':
 
@@ -58,7 +68,7 @@ def get_heat_demand_by_use(df_buil, subsector, use, year):
 
     return df
 
-def get_elec_demand_by_use(df_buil, subsector, year):
+def get_electricity_demand_by_use(df_buil, subsector, year):
 
     df = df_buil.query(
         f'''
@@ -68,6 +78,29 @@ def get_elec_demand_by_use(df_buil, subsector, year):
         ''').drop(['Sector','Subsector','Energy_carrier','Year'], axis=1) \
         .rename(columns={"Value": f"{subsector}"}) \
         .groupby('Country').sum()
+
+    return df
+
+# TODO: discuss how to deal with electricity rail
+def get_transport_demand_by_subsector(df_tra, subsector, carrier, year):
+
+    if subsector == 'land_transport':
+        subsector = ['2_wheelers', 'passenger_cars', 'busses', 'rail', 'heavy_trucks', 'light_trucks']
+    else:
+        subsector = [f'{subsector}']
+
+    if carrier == 'all':
+        carrier = ['liquids', 'methane', 'electricity', 'hydrogen']
+    else:
+        carrier = [f'{carrier}']
+
+    df = df_tra.query(
+        f'''
+        `Subsector` == {subsector} & \
+        `Energy_carrier` == {carrier} & \
+        `Year` == {year}
+        ''').drop(['Sector', 'Subsector', 'Energy_carrier', 'Year'], axis=1) \
+        .groupby('Country').sum()["Value"]
 
     return df
 
