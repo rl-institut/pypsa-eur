@@ -30,7 +30,8 @@ from pypsa.io import import_components_from_dataframe
 from scipy.stats import beta
 from vresutils.costdata import annuity
 from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
-                                    get_heat_demand_by_use, get_elec_demand_by_use, \
+                                    get_heat_demand_by_use, get_electricity_demand_by_use, \
+                                    get_transport_demand_by_subsector, \
                                     get_industrial_demand_by_carrier, \
                                     distribute_sce_demand_by_pes_layout
 
@@ -2566,7 +2567,10 @@ def add_industry(n, costs):
         pd.read_csv(snakemake.input.shipping_demand, index_col=0).squeeze() * nyears
     )
     all_navigation = domestic_navigation + international_navigation
-    p_set = all_navigation * 1e6 / nhours
+    # p_set = all_navigation * 1e6 / nhours
+
+    # get scenario demand data for shipping
+    df_sce_tran = get_sce_data_by_sector(df_sce_data, 'transport')
 
     if shipping_hydrogen_share:
         oil_efficiency = options.get(
@@ -2603,10 +2607,15 @@ def add_industry(n, costs):
         else:
             shipping_bus = nodes + " H2"
 
-        efficiency = (
-            options["shipping_oil_efficiency"] / costs.at["fuel cell", "efficiency"]
-        )
-        p_set_hydrogen = shipping_hydrogen_share * p_set * efficiency
+        # efficiency = (
+        #    options["shipping_oil_efficiency"] / costs.at["fuel cell", "efficiency"]
+        # )
+        # p_set_hydrogen = shipping_hydrogen_share * p_set * efficiency
+
+        # get, scale and distribute scenario hydrogen shipping demand
+        sce_shi_hyd = get_transport_demand_by_subsector(df_sce_tran, 'shipping', 'hydrogen', investment_year)
+        sce_shi_hyd = distribute_sce_demand_by_pes_layout(sce_shi_hyd, all_navigation.to_frame(), pop_layout)
+        p_set_shi_hyd = sce_shi_hyd * 1e6 / nhours
 
         n.madd(
             "Load",
@@ -2614,7 +2623,7 @@ def add_industry(n, costs):
             suffix=" H2 for shipping",
             bus=shipping_bus,
             carrier="H2 for shipping",
-            p_set=p_set_hydrogen,
+            p_set=p_set_shi_hyd,
         )
 
     if shipping_methanol_share:
@@ -2680,7 +2689,11 @@ def add_industry(n, costs):
         )
 
     if shipping_oil_share:
-        p_set_oil = shipping_oil_share * p_set.sum()
+        # p_set_oil = shipping_oil_share * p_set.sum()
+
+        # get and sum scenario oil shipping demand
+        sce_shi_oil = get_transport_demand_by_subsector(df_sce_tran, 'shipping', 'liquids', investment_year)
+        p_set_shi_oil = sce_shi_oil.sum() * 1e6 / nhours
 
         n.madd(
             "Load",
@@ -2688,10 +2701,10 @@ def add_industry(n, costs):
             suffix=" shipping oil",
             bus=spatial.oil.nodes,
             carrier="shipping oil",
-            p_set=p_set_oil,
+            p_set=p_set_shi_oil,
         )
 
-        co2 = p_set_oil * costs.at["oil", "CO2 intensity"]
+        co2 = p_set_shi_oil * costs.at["oil", "CO2 intensity"]
 
         n.add(
             "Load",
@@ -2790,22 +2803,27 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("aviation_demand_factor", 1)
-    all_aviation = ["total international aviation", "total domestic aviation"]
-    p_set = (
-        demand_factor
-        * pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1).sum()
-        * 1e6
-        / nhours
-    )
     if demand_factor != 1:
         logger.warning(f"Changing aviation demand by {demand_factor*100-100:+.2f}%.")
+
+    # all_aviation = ["total international aviation", "total domestic aviation"]
+    # p_set = (
+    #    demand_factor
+    #    * pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1).sum()
+    #    * 1e6
+    #    / nhours
+    # )
+
+    # get scenario aviation demand on liquids
+    sce_avi_liq = get_transport_demand_by_subsector(df_sce_tran, 'aviation', 'liquids', investment_year)
+    p_set_avi_ker = demand_factor * sce_avi_liq.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
         ["kerosene for aviation"],
         bus=spatial.oil.nodes,
         carrier="kerosene for aviation",
-        p_set=p_set,
+        p_set=p_set_avi_ker,
     )
 
     # NB: CO2 gets released again to atmosphere when plastics decay or kerosene is burned
@@ -3362,9 +3380,9 @@ if __name__ == "__main__":
             configfiles="config/config.yaml",
             simpl="",
             opts="",
-            clusters="37",
+            clusters="30",
             ll="v1.0",
-            sector_opts="24H-T-H-B-I-A-solar+p3-dist1",
+            sector_opts="Co2L0-3H-T-H-B-I-A-dist1",
             planning_horizons="2050",
         )
 
@@ -3404,8 +3422,8 @@ if __name__ == "__main__":
 
     # get scenarios electricity demand for buildings
     df_sce_buil = get_sce_data_by_sector(df_sce_data, "buildings")
-    sce_ele_res = get_elec_demand_by_use(df_sce_buil, "residential", investment_year)
-    sce_ele_ser = get_elec_demand_by_use(df_sce_buil, "services", investment_year)
+    sce_ele_res = get_electricity_demand_by_use(df_sce_buil, "residential", investment_year)
+    sce_ele_ser = get_electricity_demand_by_use(df_sce_buil, "services", investment_year)
     # get scenarios current electricity demand for industry
     df_sce_ind = get_sce_data_by_sector(df_sce_data, "industry")
     sce_ind_cel = get_industrial_demand_by_carrier(df_sce_ind, investment_year)['current electricity']
