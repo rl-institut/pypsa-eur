@@ -1,7 +1,7 @@
 import pandas as pd
 
-
 def import_sce_data(file_path, sheet_name):
+
     df = pd.read_excel(file_path, sheet_name=sheet_name)
 
     df = df.query(
@@ -48,6 +48,15 @@ def get_sce_data_by_sector(df, sector):
                 ''').drop(['Sector_viz_platform'], axis=1)
 
         return df_ind
+
+    elif sector == 'agriculture':
+
+        df_agr = df.query(
+            '''
+            `Sector` == 'agriculture'
+            ''').drop(['Sector_viz_platform'], axis=1)
+
+        return df_agr
 
     elif sector == 'all':
 
@@ -135,6 +144,17 @@ def get_industrial_demand_by_carrier(df_ind, year):
             .rename(columns={"Value": "current electricity"})
 
     df = pd.concat([df, df_leh, df_cel], axis=1)
+
+    return df
+
+
+def get_agricultural_demand_by_carrier(df_agr, carrier, year):
+
+    df = df_agr.query(
+        f'''
+        `Energy_carrier` == '{carrier}' & \
+        `Year` == {year}
+        ''').drop(['Sector', 'Subsector', 'Energy_carrier', 'Year'], axis=1)['Value']
 
     return df
 

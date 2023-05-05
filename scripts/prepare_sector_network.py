@@ -33,6 +33,7 @@ from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
                                     get_heat_demand_by_use, get_electricity_demand_by_use, \
                                     get_transport_demand_by_subsector, \
                                     get_industrial_demand_by_carrier, \
+                                    get_agricultural_demand_by_carrier, \
                                     distribute_sce_demand_by_pes_layout
 
 logger = logging.getLogger(__name__)
@@ -3027,7 +3028,23 @@ def add_agriculture(n, costs):
     nodes = pop_layout.index
     nhours = n.snapshot_weightings.generators.sum()
 
+    # get scenarios total agricultural demand
+    df_sce_agr = get_sce_data_by_sector(df_sce_data, 'agriculture')
+    sce_agr_all_nat = get_agricultural_demand_by_carrier(df_sce_agr, 'all', investment_year)
+
+    # pes total agricultural demand and fraction of subsectors
+    pes_agr_all_reg = pop_weighted_energy_totals.loc[nodes, "total agriculture"]
+    frac_agr_heat = pop_weighted_energy_totals.loc[nodes, "total agriculture heat"].div(pes_agr_all_reg)
+    frac_agr_elec = pop_weighted_energy_totals.loc[nodes, "total agriculture electricity"].div(pes_agr_all_reg)
+    frac_agr_mach = pop_weighted_energy_totals.loc[nodes, "total agriculture machinery"].div(pes_agr_all_reg)
+
+    # scale and distribute
+    sce_agr_all_reg = distribute_sce_demand_by_pes_layout(sce_agr_all_nat,
+                                                          pes_agr_all_reg.to_frame(), pop_layout)
+
     # electricity
+
+    p_set_agr_elec = sce_agr_all_reg.mul(frac_agr_elec) * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -3035,12 +3052,12 @@ def add_agriculture(n, costs):
         suffix=" agriculture electricity",
         bus=nodes,
         carrier="agriculture electricity",
-        p_set=pop_weighted_energy_totals.loc[nodes, "total agriculture electricity"]
-        * 1e6
-        / nhours,
+        p_set=p_set_agr_elec,
     )
 
     # heat
+
+    p_set_agr_heat = sce_agr_all_reg.mul(frac_agr_heat) * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -3048,29 +3065,30 @@ def add_agriculture(n, costs):
         suffix=" agriculture heat",
         bus=nodes + " services rural heat",
         carrier="agriculture heat",
-        p_set=pop_weighted_energy_totals.loc[nodes, "total agriculture heat"]
-        * 1e6
-        / nhours,
+        p_set=p_set_agr_heat,
     )
 
     # machinery
 
-    electric_share = get(
-        options["agriculture_machinery_electric_share"], investment_year
-    )
-    oil_share = get(options["agriculture_machinery_oil_share"], investment_year)
+    # get scenarios agricultural demand on liquids (oil)
+    base_year = df_sce_agr.Year.min()
+    oil_share = get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', investment_year).div \
+                (get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', base_year))
+    electric_share = 1 - oil_share
 
-    total_share = electric_share + oil_share
+    # electric_share = get(options["agriculture_machinery_electric_share"], investment_year)
+    # oil_share = get(options["agriculture_machinery_oil_share"], investment_year)
+
+    total_share = (electric_share + oil_share).mean()
     if total_share != 1:
         logger.warning(
             f"Total agriculture machinery shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
         )
 
-    machinery_nodal_energy = pop_weighted_energy_totals.loc[
-        nodes, "total agriculture machinery"
-    ]
+    # machinery_nodal_energy = pop_weighted_energy_totals.loc[nodes, "total agriculture machinery"]
+    p_set_agr_mach = sce_agr_all_reg.mul(frac_agr_mach) * 1e6 / nhours
 
-    if electric_share > 0:
+    if electric_share.any() > 0:
         efficiency_gain = (
             options["agriculture_machinery_fuel_efficiency"]
             / options["agriculture_machinery_electric_efficiency"]
@@ -3084,25 +3102,21 @@ def add_agriculture(n, costs):
             carrier="agriculture machinery electric",
             p_set=electric_share
             / efficiency_gain
-            * machinery_nodal_energy
-            * 1e6
-            / nhours,
+            * p_set_agr_mach,
         )
 
-    if oil_share > 0:
+    if oil_share.any() > 0:
         n.madd(
             "Load",
             ["agriculture machinery oil"],
             bus=spatial.oil.nodes,
             carrier="agriculture machinery oil",
-            p_set=oil_share * machinery_nodal_energy.sum() * 1e6 / nhours,
+            p_set=oil_share * p_set_agr_mach.sum(),
         )
 
         co2 = (
             oil_share
-            * machinery_nodal_energy.sum()
-            * 1e6
-            / nhours
+            * p_set_agr_mach.sum()
             * costs.at["oil", "CO2 intensity"]
         )
 
