@@ -80,14 +80,15 @@ enable:
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
 # this is also over-ridden if cb is set in sector_opts
+# derived from /data/scenario/tyndp_de/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 39
 co2_budget:
-  2020: 0.701
-  2025: 0.524
-  2030: 0.297
-  2035: 0.150
-  2040: 0.071
-  2045: 0.032
-  2050: 0.000
+  2020: 0.7439
+  2025: 0.6555
+  2030: 0.4501
+  2035: 0.3243
+  2040: 0.1988
+  2045: 0.0995
+  2050: 0.0000
 
 electricity:
   voltages: [220., 300., 380.]
