@@ -34,7 +34,8 @@ from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
                                     get_transport_demand_by_subsector, \
                                     get_industrial_demand_by_carrier, \
                                     get_agricultural_demand_by_carrier, \
-                                    distribute_sce_demand_by_pes_layout
+                                    distribute_sce_demand_by_pes_layout, \
+                                    scale_district_heating_dem
 
 logger = logging.getLogger(__name__)
 
@@ -3493,6 +3494,9 @@ if __name__ == "__main__":
 
     if "H" in opts:
         add_heat(n, costs)
+
+    scale_district_heating_dem(n, snakemake.input.tyndp_dh_share,
+                               investment_year)
 
     if "B" in opts:
         add_biomass(n, costs)

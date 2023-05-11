@@ -170,3 +170,25 @@ def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layo
     sce_demand_reg = pes_demand_reg.cty.map(sce_demand_nat).mul(pes_demand_reg.fraction)
 
     return sce_demand_reg
+
+def scale_district_heating_dem(n, dh_share, year):
+
+    # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
+
+    # get scenario share and pes demands
+    share = pd.read_csv(dh_share, index_col=0)
+    heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
+    heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                                             ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
+    heat_dh_total = share.loc[float(year), 'Distributed Energy'] * heat_total
+
+    # calculate scaling factors
+    scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
+    scale_factor_dh = heat_dh_total / n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"].sum().sum()
+
+    # scale demands
+    n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                            ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh
+    n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh
+
+    print("district heating share is scaled up by; ", scale_factor_dh)
