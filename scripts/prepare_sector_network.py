@@ -2609,8 +2609,9 @@ def add_industry(n, costs):
     shipping_hydrogen_share = get(options["shipping_hydrogen_share"], investment_year)
     shipping_methanol_share = get(options["shipping_methanol_share"], investment_year)
     shipping_oil_share = get(options["shipping_oil_share"], investment_year)
+    shipping_gas_share = get(options["shipping_oil_share"], investment_year)
 
-    total_share = shipping_hydrogen_share + shipping_methanol_share + shipping_oil_share
+    total_share = shipping_hydrogen_share + shipping_methanol_share + shipping_oil_share + shipping_gas_share
     if total_share != 1:
         logger.warning(
             f"Total shipping shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
@@ -2767,6 +2768,32 @@ def add_industry(n, costs):
             "shipping oil emissions",
             bus="co2 atmosphere",
             carrier="shipping oil emissions",
+            p_set=-co2,
+        )
+
+    if shipping_gas_share:
+        # p_set_gas = shipping_gas_share * p_set.sum()
+
+        # get and sum scenario gas shipping demand
+        sce_shi_gas = get_transport_demand_by_subsector(df_sce_tran, 'shipping', 'methane', investment_year)
+        p_set_shi_gas = sce_shi_gas.sum() * 1e6 / nhours
+
+        n.madd(
+            "Load",
+            spatial.gas.nodes,
+            suffix=" shipping gas",
+            bus=spatial.gas.nodes,
+            carrier="shipping gas",
+            p_set=p_set_shi_gas,
+        )
+
+        co2 = p_set_shi_gas * costs.at["gas", "CO2 intensity"]
+
+        n.add(
+            "Load",
+            "shipping gas emissions",
+            bus="co2 atmosphere",
+            carrier="shipping gas emissions",
             p_set=-co2,
         )
 

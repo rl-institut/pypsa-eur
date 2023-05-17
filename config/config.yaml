@@ -396,11 +396,12 @@ sector:
     # 2030: 0.25
     # 2040: 0.6
     # 2050: 0.85
-  land_transport_ice_share: true
+  land_transport_oil_share: true
     # 2020: 1
     # 2030: 0.7
     # 2040: 0.3
     # 2050: 0
+  land_transport_gas_share: true
   transport_fuel_cell_efficiency: 0.5
   transport_internal_combustion_efficiency: 0.3
   agriculture_machinery_electric_share: 0
@@ -426,6 +427,7 @@ sector:
     # 2030: 0.7
     # 2040: 0.3
     # 2050: 0
+  shipping_gas_share: true
   shipping_methanol_efficiency: 0.46 # 10-15% higher https://www.iea-amf.org/app/webroot/files/file/Annex%20Reports/AMF_Annex_56.pdf, https://users.ugent.be/~lsileghe/documents/extended_abstract.pdf
   shipping_oil_efficiency: 0.40 #For conversion of fuel oil to propulsion in 2011
   aviation_demand_factor: 1. # relative aviation demand compared to today
