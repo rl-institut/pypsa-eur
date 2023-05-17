@@ -1428,9 +1428,10 @@ def add_land_transport(n, costs):
 
     fuel_cell_share = get(options["land_transport_fuel_cell_share"], investment_year)
     electric_share = get(options["land_transport_electric_share"], investment_year)
-    ice_share = get(options["land_transport_ice_share"], investment_year)
+    oil_share = get(options["land_transport_oil_share"], investment_year)
+    gas_share = get(options["land_transport_gas_share"], investment_year)
 
-    total_share = fuel_cell_share + electric_share + ice_share
+    total_share = fuel_cell_share + electric_share + oil_share + gas_share
     if total_share != 1:
         logger.warning(
             f"Total land transport shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
@@ -1438,7 +1439,7 @@ def add_land_transport(n, costs):
 
     logger.info(f"FCEV share: {fuel_cell_share*100}%")
     logger.info(f"EV share: {electric_share*100}%")
-    logger.info(f"ICEV share: {ice_share*100}%")
+    logger.info(f"ICEV share: {oil_share*100}%")
 
     nodes = pop_layout.index
 
@@ -1568,11 +1569,11 @@ def add_land_transport(n, costs):
             p_set=p_set_ltr_hyd,
         )
 
-    # get scenario transport ICEV land transport
+    # get scenario oil demand for ICEV land transport
     sce_ltr_liq = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'liquids', investment_year)
-    ice_share = sce_ltr_liq.sum() / sce_ltr_all.sum()
+    oil_share = sce_ltr_liq.sum() / sce_ltr_all.sum()
 
-    if ice_share > 0:
+    if oil_share > 0:
         if "oil" not in n.buses.carrier.unique():
             n.madd(
                 "Bus",
@@ -1585,7 +1586,7 @@ def add_land_transport(n, costs):
 
         pes_land_transport = transport[nodes]
         # ice_efficiency = options["transport_internal_combustion_efficiency"]
-        # p_set = ice_share / ice_efficiency * transport[nodes]
+        # p_set = oil_share / ice_efficiency * transport[nodes]
 
         # get regional distributed pes demand and nationally distributed sce demand
         pes_ltr_liq_reg = pes_land_transport.sum().to_frame() / 1e6
@@ -1618,6 +1619,59 @@ def add_land_transport(n, costs):
             "land transport oil emissions",
             bus="co2 atmosphere",
             carrier="land transport oil emissions",
+            p_set=-co2,
+        )
+    # TODO: missing plotting gas for transport, in config gas_share / oil_share
+    # get scenario gas demand for ICEV land transport
+    sce_ltr_gas = get_transport_demand_by_subsector(df_sce_tran, 'land_transport', 'methane', investment_year)
+    gas_share = sce_ltr_gas.sum() / sce_ltr_all.sum()
+
+    if gas_share > 0:
+        if "gas" not in n.buses.carrier.unique():
+            n.madd(
+                "Bus",
+                spatial.gas.nodes,
+                location=spatial.gas.locations,
+                carrier="gas",
+                unit="MWh_LHV",
+            )
+
+
+        pes_land_transport = transport[nodes]
+        # ice_efficiency = options["transport_internal_combustion_efficiency"]
+        # p_set = gas_share / ice_efficiency * transport[nodes]
+
+        # get regional distributed pes demand and nationally distributed sce demand
+        pes_ltr_gas_reg = pes_land_transport.sum().to_frame() / 1e6
+        sce_ltr_gas_nat = sce_ltr_gas
+
+        # scale and distribute
+        sce_ltr_gas_reg = distribute_sce_demand_by_pes_layout(sce_ltr_gas_nat, pes_ltr_gas_reg, pop_layout)
+        scale_factor = sce_ltr_gas_reg.div(pes_ltr_gas_reg[0])
+
+        # update ICEV demand to sce data using regional scale factor
+        p_set_ltr_gas = pes_land_transport.mul(scale_factor, axis=1)
+
+        n.madd(
+            "Load",
+            nodes,
+            suffix=" land transport gas",
+            bus=spatial.gas.nodes,
+            carrier="land transport gas",
+            p_set=p_set_ltr_gas,
+        )
+
+        co2 = (
+            p_set_ltr_gas.sum().sum()
+            / nhours
+            * costs.at["gas", "CO2 intensity"]
+        )
+
+        n.add(
+            "Load",
+            "land transport gas emissions",
+            bus="co2 atmosphere",
+            carrier="land transport gas emissions",
             p_set=-co2,
         )
 
