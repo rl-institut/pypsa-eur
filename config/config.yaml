@@ -33,7 +33,7 @@ scenario:
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - 24H-T-H-B-I-A-dist1
+  - 24H-T-H-B-I-A-dist1-CCL
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -95,7 +95,7 @@ electricity:
   gaslimit: false # global gas usage limit of X MWh_th
   co2limit: 7.75e+7 # 0.05 * 3.1e9*0.5
   co2base: 1.487e+9
-  agg_p_nom_limits: data/agg_p_nom_minmax.csv
+  agg_p_nom_limits: ../data/agg_p_nom_sce.csv
 
   operational_reserve: # like https://genxproject.github.io/GenX/dev/core/#Reserves
     activate: false

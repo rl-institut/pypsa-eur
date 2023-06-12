@@ -35,7 +35,8 @@ from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
                                     get_industrial_demand_by_carrier, \
                                     get_agricultural_demand_by_carrier, \
                                     distribute_sce_demand_by_pes_layout, \
-                                    scale_district_heating_dem
+                                    scale_district_heating_dem, \
+                                    build_sce_capacities
 
 logger = logging.getLogger(__name__)
 
@@ -3608,6 +3609,13 @@ if __name__ == "__main__":
 
     if options["allam_cycle"]:
         add_allam(n, costs)
+
+    input_path = snakemake.input.tyndp_supply
+    sheet_name = "Capacity & Dispatch"
+    output_path = snakemake.config["electricity"]["agg_p_nom_limits"]
+
+    # creates csv with installed capacities per target year aggregated to country level
+    build_sce_capacities(input_path, sheet_name, output_path)
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)

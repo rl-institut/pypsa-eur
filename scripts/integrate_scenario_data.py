@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 def import_sce_data(file_path, sheet_name):
 
@@ -192,3 +193,35 @@ def scale_district_heating_dem(n, dh_share, year):
     n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh
 
     print("district heating share is scaled up by; ", scale_factor_dh)
+
+
+def build_sce_capacities(input_path, sheet_name, output_path):
+
+    carrier_mapping = {'wind onshore': 'onwind',
+                       'onshore wind_stand alone': 'onwind',
+                       'wind offshore': 'offwind',
+                       'offshore wind_stand alone': 'offwind',
+                       'solar_stand alone': 'solar'}
+
+    eu27_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GB|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK'  #'CY','MT'
+
+    df = pd.read_excel(input_path, sheet_name)
+
+    df_sup = df.query(
+        '''
+        `Scenario` == 'Distributed Energy' & \
+        `Parameter` == 'Capacity (MW)' & \
+        `Fuel` != ['Other RES', 'Other Non RES'] & \
+        `Climate Year` == 'CY 2009'
+        ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
+        .rename(columns={"Fuel": "carrier"}) \
+        .replace({'carrier': carrier_mapping})
+
+    # add country column
+    df_sup = df_sup[df_sup.Node.str.contains(eu27_str)]
+    df_sup["country"] = df_sup.Node.str[:2]
+
+    df_agg_caps = pd.pivot_table(df_sup, values='Value', index=['country', 'carrier'],
+                                 columns=['Year'], aggfunc=np.sum)
+
+    df_agg_caps.to_csv(output_path, index=True)
