@@ -1,0 +1,5 @@
+component,variable,marginal_cost,nominal,handle_separately,cost
+Generator,p_nom_slack_min_1,False,True,False,True
+Generator,p_nom_slack_min_2,False,True,False,True
+Generator,p_nom_slack_max_1,False,True,False,True
+Generator,p_nom_slack_max_2,False,True,False,True

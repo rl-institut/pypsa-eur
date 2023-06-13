@@ -28,6 +28,7 @@ Additionally, some extra constraints specified in :mod:`solve_network` are added
 """
 import logging
 import re
+import os
 
 import numpy as np
 import pandas as pd
@@ -43,6 +44,15 @@ from vresutils.benchmark import memory_logger
 logger = logging.getLogger(__name__)
 pypsa.pf.logger.setLevel(logging.WARNING)
 from pypsa.descriptors import get_switchable_as_dense as get_as_dense
+from linopy import merge
+from pypsa.optimization.variables import (
+    define_nominal_variables
+)
+
+lookup = pd.read_csv(
+    os.path.join(os.path.dirname(__file__), "..", "data", "variables.csv"),
+    index_col=["component", "variable"],
+)
 
 
 def add_land_use_constraint(n, config):
@@ -202,13 +212,19 @@ def prepare_network(n, solve_opts=None, config=None):
     return n
 
 
+def add_slack_variables(n):
+    # Define variables
+    # TODO: define positive
+    for c, attr in lookup.query("nominal").index:
+        define_nominal_variables(n, c, attr)
+
 def add_CCL_constraints(n, config):
     """
     Add CCL (country & carrier limit) constraint to the network.
 
     Add minimum and maximum levels of generator nominal capacity per carrier
-    for individual countries. Opts and path for agg_p_nom_minmax.csv must be defined
-    in config.yaml. Default file is available at data/agg_p_nom_minmax.csv.
+    for individual countries. Opts and path for agg_p_nom_sce.csv must be defined
+    in config.yaml. Default file is available at data/agg_p_nom_sce.csv.
 
     Parameters
     ----------
@@ -220,31 +236,59 @@ def add_CCL_constraints(n, config):
     scenario:
         opts: [Co2L-CCL-24H]
     electricity:
-        agg_p_nom_limits: data/agg_p_nom_minmax.csv
+        agg_p_nom_limits: data/agg_p_nom_sce.csv
     """
-    agg_p_nom_minmax = pd.read_csv(
+
+    target_year = snakemake.wildcards.planning_horizons[-4:]
+
+    agg_p_nom_sce = pd.read_csv(
         config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
+
+    range = 0
+    agg_p_nom_min = (agg_p_nom_sce[target_year] - range).dropna().clip(lower=0.1) # non-negative values
+    agg_p_nom_max = (agg_p_nom_sce[target_year] + range).dropna()
+
     logger.info("Adding generation capacity constraints per carrier and country")
+
     p_nom = n.model["Generator-p_nom"]
 
-    gens = n.generators.query("p_nom_extendable").rename_axis(index="Generator-ext")
+    slack_min_1 = n.model["Generator-p_nom_slack_min_1"]
+    slack_min_2 = n.model["Generator-p_nom_slack_min_2"]
+    slack_max_1 = n.model["Generator-p_nom_slack_max_1"]
+    slack_max_2 = n.model["Generator-p_nom_slack_max_2"]
+
+    gens = n.generators.query("p_nom_extendable").rename_axis(index="Generator-ext") # .query("p_nom_extendable")
+
+    # group generator carriers onto scenario carrier
+    carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
+                       'coal': 'coal & lignite', 'lignite': 'coal & lignite',
+                       'OCGT': 'gas', 'CCGT': 'gas'}
+    gens["carrier"] = gens.carrier.replace(carrier_grouper)
+
     grouper = [gens.bus.map(n.buses.country), gens.carrier]
     grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper), dims=["Generator-ext"])
     lhs = p_nom.groupby(grouper).sum().rename(bus="country")
 
-    minimum = xr.DataArray(agg_p_nom_minmax["min"].dropna()).rename(dim_0="group")
+    lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
+    lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
+    lhs_slack_max_1 = slack_max_1.groupby(grouper).sum().rename(bus="country")
+    lhs_slack_max_2 = slack_max_2.groupby(grouper).sum().rename(bus="country")
+
+    minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) >= minimum.loc[index], name="agg_p_nom_min"
+            lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) - lhs_slack_min_2.sel(group=index) >=
+            minimum.loc[index] , name="agg_p_nom_min"
         )
 
-    maximum = xr.DataArray(agg_p_nom_minmax["max"].dropna()).rename(dim_0="group")
+    maximum = xr.DataArray(agg_p_nom_max).rename(dim_0="group")
     index = maximum.indexes["group"].intersection(lhs.indexes["group"])
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) <= maximum.loc[index], name="agg_p_nom_max"
+            lhs.sel(group=index) + lhs_slack_max_1.sel(group=index) - lhs_slack_max_2.sel(group=index) <=
+            maximum.loc[index], name="agg_p_nom_max"
         )
 
 
@@ -563,6 +607,14 @@ def add_pipe_retrofit_constraint(n):
 
     n.model.add_constraints(lhs == rhs, name="Link-pipe_retrofit")
 
+def add_slacks_to_objective(n, snapshots):
+    m = n.model
+    objective = []
+    for c, attr in lookup.query("cost").index:
+        cost = 1e6
+        operation = m[f"{c}-{attr}"]
+        objective.append((operation * cost).sum())
+    m.objective = merge(objective) # TODO merge old with new objective
 
 def extra_functionality(n, snapshots):
     """
@@ -579,7 +631,8 @@ def extra_functionality(n, snapshots):
         add_BAU_constraints(n, config)
     if "SAFE" in opts and n.generators.p_nom_extendable.any():
         add_SAFE_constraints(n, config)
-    if "CCL" in opts and n.generators.p_nom_extendable.any():
+    if "CCL" in opts: # and n.generators.p_nom_extendable.any():
+        add_slack_variables(n)
         add_CCL_constraints(n, config)
     reserve = config["electricity"].get("operational_reserve", {})
     if reserve.get("activate"):
@@ -589,6 +642,8 @@ def extra_functionality(n, snapshots):
             add_EQ_constraints(n, o)
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
+
+    add_slacks_to_objective(n, snapshots)
 
 
 def solve_network(n, config, opts="", **kwargs):
@@ -605,6 +660,9 @@ def solve_network(n, config, opts="", **kwargs):
     # add to network for extra_functionality
     n.config = config
     n.opts = opts
+
+    # set p_nom_ext to True
+    n.generators = n.generators.assign(p_nom_extendable=True)
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
@@ -644,14 +702,14 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "solve_sector_network",
-            configfiles="test/config.overnight.yaml",
+            "solve_network",
+            configfiles="config/config.yaml",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="30",
+            ll="v1.0",
+            sector_opts="Co2L0-3H-T-H-B-I-A-dist1-CCL",
+            planning_horizons="2050",
         )
     configure_logging(snakemake)
     if "sector_opts" in snakemake.wildcards.keys():
