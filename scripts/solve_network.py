@@ -627,7 +627,8 @@ def add_slacks_to_objective(n, snapshots):
         cost = 1e6
         operation = m[f"{c}-{attr}"]
         objective.append((operation * cost).sum())
-    m.objective = merge(objective) # TODO merge old with new objective
+    objective.append(m.objective)
+    m.objective = merge(objective) # TODO check objective function
 
 def extra_functionality(n, snapshots):
     """
