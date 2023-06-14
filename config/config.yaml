@@ -51,6 +51,7 @@ scenario:
   # cb40ex0 distributes a carbon budget of 40 GtCO2 following an exponential
   # decay with initial growth rate 0
   planning_horizons: # investment years for myopic and perfect; for overnight, year of cost assumptions can be different and is defined under 'costs'
+  - 2040
   - 2050
   # for example, set to
   # - 2020

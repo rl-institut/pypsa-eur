@@ -216,7 +216,7 @@ def add_slack_variables(n):
     # Define variables
     for c, attr in lookup.query("nominal").index:
         define_nominal_variables(n, c, attr)
-    # TODO: check constraints
+
     n.model.add_constraints(
         n.model["Generator-p_nom_slack_min_1"] >= 0, name="p_nom_slack_min_1"
     )
@@ -628,7 +628,7 @@ def add_slacks_to_objective(n, snapshots):
         operation = m[f"{c}-{attr}"]
         objective.append((operation * cost).sum())
     objective.append(m.objective)
-    m.objective = merge(objective) # TODO check objective function
+    m.objective = merge(objective)
 
 def extra_functionality(n, snapshots):
     """
