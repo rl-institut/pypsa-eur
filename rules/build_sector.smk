@@ -678,6 +678,7 @@ rule prepare_sector_network:
         eurostat=input_eurostat,
         pop_weighted_energy_totals=RESOURCES
         + "pop_weighted_energy_totals_s{simpl}_{clusters}.csv",
+        clever_demand_files="data/scenario/clever/",
         shipping_demand=RESOURCES + "shipping_demand_s{simpl}_{clusters}.csv",
         transport_demand=RESOURCES + "transport_demand_s{simpl}_{clusters}.csv",
         transport_data=RESOURCES + "transport_data_s{simpl}_{clusters}.csv",
