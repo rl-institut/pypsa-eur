@@ -67,6 +67,8 @@ def _add_land_use_constraint(n, config):
 
     for carrier in ["solar", "onwind", "offwind-ac", "offwind-dc"]:
         ext_i = (n.generators.carrier == carrier) & ~n.generators.p_nom_extendable
+        if not "location" in n.buses:
+           n.buses["location"] = n.buses.index.str[:2]
         existing = (
             n.generators.loc[ext_i, "p_nom"]
             .groupby(n.generators.bus.map(n.buses.location))
@@ -223,12 +225,12 @@ def add_slack_variables(n):
     n.model.add_constraints(
         n.model["Generator-p_nom_slack_min_2"] >= 0, name="p_nom_slack_min_2"
     )
-    n.model.add_constraints(
-        n.model["Generator-p_nom_slack_max_1"] >= 0, name="p_nom_slack_max_1"
-    )
-    n.model.add_constraints(
-        n.model["Generator-p_nom_slack_max_2"] >= 0, name="p_nom_slack_max_2"
-    )
+    #n.model.add_constraints(
+    #    n.model["Generator-p_nom_slack_max_1"] >= 0, name="p_nom_slack_max_1"
+    #)
+    #n.model.add_constraints(
+    #    n.model["Generator-p_nom_slack_max_2"] >= 0, name="p_nom_slack_max_2"
+    #)
 
 
 def add_CCL_constraints(n, config):
@@ -259,8 +261,8 @@ def add_CCL_constraints(n, config):
     )
 
     range = 0
-    agg_p_nom_min = (agg_p_nom_sce[target_year] - range).dropna().clip(lower=0.1) # non-negative values
-    agg_p_nom_max = (agg_p_nom_sce[target_year] + range).dropna()
+    agg_p_nom_min = (agg_p_nom_sce[target_year] - range).fillna(0).clip(lower=0.1) # non-negative values # TODO: fillna()?
+    #agg_p_nom_max = (agg_p_nom_sce[target_year] + range).dropna()
 
     logger.info("Adding generation capacity constraints per carrier and country")
 
@@ -268,8 +270,13 @@ def add_CCL_constraints(n, config):
 
     slack_min_1 = n.model["Generator-p_nom_slack_min_1"]
     slack_min_2 = n.model["Generator-p_nom_slack_min_2"]
-    slack_max_1 = n.model["Generator-p_nom_slack_max_1"]
-    slack_max_2 = n.model["Generator-p_nom_slack_max_2"]
+    #slack_max_1 = n.model["Generator-p_nom_slack_max_1"]
+    #slack_max_2 = n.model["Generator-p_nom_slack_max_2"]
+
+    n.generators['p_nom_slack_min_1_opt'] = np.nan
+    n.generators['p_nom_slack_min_2_opt'] = np.nan
+    #n.generators['p_nom_slack_max_1_opt'] = np.nan
+    #n.generators['p_nom_slack_max_2_opt'] = np.nan
 
     gens = n.generators.query("p_nom_extendable").rename_axis(index="Generator-ext") # .query("p_nom_extendable")
 
@@ -285,24 +292,24 @@ def add_CCL_constraints(n, config):
 
     lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
     lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
-    lhs_slack_max_1 = slack_max_1.groupby(grouper).sum().rename(bus="country")
-    lhs_slack_max_2 = slack_max_2.groupby(grouper).sum().rename(bus="country")
+    #lhs_slack_max_1 = slack_max_1.groupby(grouper).sum().rename(bus="country")
+    #lhs_slack_max_2 = slack_max_2.groupby(grouper).sum().rename(bus="country")
 
     minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) - lhs_slack_min_2.sel(group=index) >=
+            lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) - lhs_slack_min_2.sel(group=index) ==
             minimum.loc[index] , name="agg_p_nom_min"
         )
-
+    '''
     maximum = xr.DataArray(agg_p_nom_max).rename(dim_0="group")
     index = maximum.indexes["group"].intersection(lhs.indexes["group"])
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) + lhs_slack_max_1.sel(group=index) - lhs_slack_max_2.sel(group=index) <=
             maximum.loc[index], name="agg_p_nom_max"
-        )
+        )'''
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
@@ -656,7 +663,7 @@ def extra_functionality(n, snapshots):
             add_EQ_constraints(n, o)
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
-
+    print(n.model.constraints)
     add_slacks_to_objective(n, snapshots)
 
 

@@ -202,7 +202,7 @@ def build_sce_capacities(input_path, sheet_name, output_path):
                        'wind offshore': 'offwind',
                        'offshore wind_stand alone': 'offwind',
                        'solar_stand alone': 'solar'}
-
+    # {'|'.join(['Beer', 'Alcohol', 'Beverage', 'Drink']): 'Drink'}
     eu27_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GB|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK'  #'CY','MT'
 
     df = pd.read_excel(input_path, sheet_name)
