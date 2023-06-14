@@ -214,9 +214,22 @@ def prepare_network(n, solve_opts=None, config=None):
 
 def add_slack_variables(n):
     # Define variables
-    # TODO: define positive
     for c, attr in lookup.query("nominal").index:
         define_nominal_variables(n, c, attr)
+    # TODO: check constraints
+    n.model.add_constraints(
+        n.model["Generator-p_nom_slack_min_1"] >= 0, name="p_nom_slack_min_1"
+    )
+    n.model.add_constraints(
+        n.model["Generator-p_nom_slack_min_2"] >= 0, name="p_nom_slack_min_2"
+    )
+    n.model.add_constraints(
+        n.model["Generator-p_nom_slack_max_1"] >= 0, name="p_nom_slack_max_1"
+    )
+    n.model.add_constraints(
+        n.model["Generator-p_nom_slack_max_2"] >= 0, name="p_nom_slack_max_2"
+    )
+
 
 def add_CCL_constraints(n, config):
     """
