@@ -3230,18 +3230,19 @@ def set_temporal_aggregation(n, opts, solver_name):
 
 
 if __name__ == "__main__":
+    # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
             "prepare_sector_network",
-            configfiles="test/config.overnight.yaml",
+            configfiles="config/config.yaml",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="32",
+            ll="1.0",
+            sector_opts="25H-T-H-B-I-A-dist1",
+            planning_horizons="2050",
         )
 
     logging.basicConfig(level=snakemake.config["logging"]["level"])
