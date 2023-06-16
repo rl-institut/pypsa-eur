@@ -3228,6 +3228,32 @@ def set_temporal_aggregation(n, opts, solver_name):
             break
     return n
 
+# get demand data from clever scenario in one dict of dicts
+def get_clever_demand() -> dict:
+    """
+    read demands for clever scenario for all sectors
+    """
+    clever_demand = {}
+    # dictionary that states for all sectors which subsectors there are to read
+    sectors = {"agriculture": ["electricity"],
+               "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal"],
+               "residential": ["electricity", "space_heating", "water_heating"],
+               "industry": ["electricity", "gas", "h2", "naphtha", "solid_biomass"],
+               "transport": ["land_ev","land_h2","land_liquid_fuels","shipping_liquid_fuels","aviation_liquid_fuels"]
+               }
+    # read for all sectors each subsector and store in list in corresponding dictionary entry
+    for sector, subsectors in sectors.items():
+        # store subsector demands in dictionary for each sector
+        clever_demand[sector] = {}
+        for subsector in subsectors:
+            # read demand with country code as index
+            demand_subsector = pd.read_csv(snakemake.input.clever_demand_files + f"clever_demand_{sector}_{subsector}.csv",
+                                                     decimal=',', delimiter=';',
+                                                     index_col=0).dropna()
+            # store subsector demand
+            clever_demand[sector][subsector] = demand_subsector
+
+    return clever_demand
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
