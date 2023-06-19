@@ -3235,7 +3235,7 @@ def get_clever_demand() -> dict:
     """
     clever_demand = {}
     # dictionary that states for all sectors which subsectors there are to read
-    sectors = {"agriculture": ["electricity"],
+    sectors = {"agriculture": ["electricity","total"],
                "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal"],
                "residential": ["electricity", "space_heating", "water_heating"],
                "industry": ["electricity", "gas", "h2", "naphtha", "solid_biomass"],
