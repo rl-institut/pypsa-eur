@@ -1597,6 +1597,7 @@ def add_land_transport(n, costs):
 
 def scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, carrier):
         """
+        Scale the demand of land transport for a given carrier to be the equivalent demand of the scenario
         @type carrier: str
         Carrier can either be 'BEV', 'FCEV' or 'ICEV'.
         """
@@ -1679,12 +1680,53 @@ def add_heat(n, costs):
     logger.info("Add heat sector")
 
     sectors = ["residential", "services"]
+    uses = ["water", "space"]
 
     heat_demand = build_heat_demand(n)
 
     nodes, dist_fraction, urban_fraction = create_nodes_for_heat_sector()
 
     # NB: must add costs of central heating afterwards (EUR 400 / kWpeak, 50a, 1% FOM from Fraunhofer ISE)
+
+    # scale heat demand to CLEVER scenario demand
+    for sector in sectors:
+
+        # CLEVER services demand is not available as separate water and space heating
+        # difference between total energy demand and electricity demand in services buildings is used
+        if sector == "services":
+            # get regional distributed pes demand and nationally distributed CLEVER demand for both uses summed up
+            pes_heat_serv_reg = heat_demand[[f"{sector} space",
+                                             f"{sector} water"]].sum().unstack().sum().to_frame() / 1e6
+            clever_heat_serv_nat = clever_dict[sector]["total"][str(investment_year)] - \
+                                   clever_dict[sector]["electricity"][str(investment_year)]
+
+            # scale and distribute according to total services heat demands
+            clever_heat_serv_reg = distribute_sce_demand_by_pes_layout(clever_heat_serv_nat,
+                                                                       pes_heat_serv_reg, pop_layout)
+            scale_factor = clever_heat_serv_reg / pes_heat_serv_reg[0]
+
+            # update both water and space heat accordingly to CLEVER demand using regional scale factor
+            # this also keeps distribution of demands between uses as in pes
+            heat_demand[sector + " water"] *= scale_factor
+            heat_demand[sector + " space"] *= scale_factor
+            print(f"heat scale factors for sector {sector} water : \n {scale_factor}")
+            print(f"heat scale factors for sector {sector} space : \n {scale_factor}")
+
+        elif sector == "residential":
+            for use in uses:
+
+                # get regional distributed pes demand and nationally distributed CLEVER demand per sector
+                pes_heat_resid_reg = heat_demand[[f"{sector} {use}"]].sum().unstack().T / 1e6
+                sce_heat_resid_nat = clever_dict[sector][f"{use}_heating"][str(investment_year)]
+
+                # scale and distribute
+                sce_heat_resid_reg = distribute_sce_demand_by_pes_layout(sce_heat_resid_nat,
+                                                                         pes_heat_resid_reg, pop_layout)
+                scale_factor = sce_heat_resid_reg.div(pes_heat_resid_reg[f"{sector} {use}"])
+
+                # update heat demand to CLEVER data using regional scale factor
+                heat_demand[f"{sector} {use}"] *= scale_factor
+                print(f"heat scale factors for sector {sector} {use} : \n {scale_factor}")
 
     # exogenously reduce space heat demand
     if options["reduce_space_heat_exogenously"]:
@@ -3294,7 +3336,7 @@ def get_clever_demand() -> dict:
     clever_demand = {}
     # dictionary that states for all sectors which subsectors there are to read
     sectors = {"agriculture": ["electricity", "total"],
-               "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal"],
+               "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal", "total"],
                "residential": ["electricity", "space_heating", "water_heating"],
                "industry": ["electricity", "gas", "h2", "naphtha", "solid_biomass"],
                "transport": ["land_ev", "land_h2", "land_liquid_fuels", "shipping_liquid_fuels",
