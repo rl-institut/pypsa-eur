@@ -1421,17 +1421,19 @@ def add_land_transport(n, costs):
     # TODO: maybe adjust shares @Daniel
     fuel_cell_share = get(options["land_transport_fuel_cell_share"], investment_year)
     electric_share = get(options["land_transport_electric_share"], investment_year)
-    ice_share = get(options["land_transport_ice_share"], investment_year)
+    oil_share = get(options["land_transport_oil_share"], investment_year)
+    gas_share = get(options["land_transport_gas_share"], investment_year)
 
-    total_share = fuel_cell_share + electric_share + ice_share
+    total_share = fuel_cell_share + electric_share + oil_share + gas_share
     if total_share != 1:
         logger.warning(
             f"Total land transport shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
         )
 
-    logger.info(f"FCEV share: {fuel_cell_share*100}%")
-    logger.info(f"EV share: {electric_share*100}%")
-    logger.info(f"ICEV share: {ice_share*100}%")
+    logger.info(f"FCEV share: {fuel_cell_share:.2%}")
+    logger.info(f"EV share: {electric_share:.2%}")
+    logger.info(f"ICEV Oil share: {oil_share:.2%}")
+    logger.info(f"ICEV Gas share: {gas_share:.2%}")
 
     nodes = pop_layout.index
 
@@ -1448,13 +1450,15 @@ def add_land_transport(n, costs):
     clever_ltr_total = clever_df_ltr.sum(axis=1)
 
     # Getting different shares according to CLEVER data
-    # EU30 demand represents sum over all 30 EU countries.
+    # EU27 demand represents sum over all 27 EU countries.
     # BEV share
-    electric_share = clever_df_ltr.loc["EU30", "land_ev"] / clever_ltr_total.loc["EU30"]
+    electric_share = clever_df_ltr.loc["EU27", "land_ev"] / clever_ltr_total.loc["EU27"]
     # FCEV share
-    fuel_cell_share = clever_df_ltr.loc["EU30", "land_h2"] / clever_ltr_total.loc["EU30"]
+    fuel_cell_share = clever_df_ltr.loc["EU27", "land_h2"] / clever_ltr_total.loc["EU27"]
     # ICEV share
-    ice_share = clever_df_ltr.loc["EU30", "land_liquid_fuels"] / clever_ltr_total.loc["EU30"]
+    oil_share = clever_df_ltr.loc["EU27", "land_liquid_fuels"] / clever_ltr_total.loc["EU27"]
+    # gas share
+    gas_share = clever_df_ltr.loc["EU27", "land_gas"] / clever_ltr_total.loc["EU27"]
 
     if electric_share > 0:
         n.add("Carrier", "Li ion")
@@ -1488,7 +1492,7 @@ def add_land_transport(n, costs):
         pes_ltr_ele_reg = pes_ltr.sum().to_frame() / 1e6
         pes_ltr_ele_reg['ctry'] = pes_ltr_ele_reg.index.str[:2]
         clever_ltr_ele_nat = clever_df_ltr["land_ev"]
-        electric_share_reg = pes_ltr_ele_reg.ctry.map(clever_ltr_ele_nat.div(clever_ltr_total.loc["EU30"]))
+        electric_share_reg = pes_ltr_ele_reg.ctry.map(clever_ltr_ele_nat.div(clever_ltr_total.loc["EU27"]))
         p_nom = number_cars.mul(electric_share_reg) * options.get("bev_charge_rate", 0.011)
 
         n.madd(
@@ -1556,7 +1560,7 @@ def add_land_transport(n, costs):
             p_set=p_set_ltr_h2,
         )
 
-    if ice_share > 0:
+    if oil_share > 0:
         if "oil" not in n.buses.carrier.unique():
             n.madd(
                 "Bus",
@@ -1570,7 +1574,7 @@ def add_land_transport(n, costs):
         pes_ltr = transport[nodes]
 
         # substitute land ICEV transport data with CLEVER demand data
-        p_set_ltr_liq = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "ICEV")
+        p_set_ltr_liq = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "ICEV_oil")
 
         n.madd(
             "Load",
@@ -1595,11 +1599,50 @@ def add_land_transport(n, costs):
             p_set=-co2,
         )
 
+    if gas_share > 0:
+        if "gas" not in n.buses.carrier.unique():
+            n.madd(
+                "Bus",
+                spatial.gas.nodes,
+                location=spatial.gas.locations,
+                carrier="gas",
+                unit="MWh_LHV",
+            )
+
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land ICEV transport data with CLEVER demand data
+        p_set_ltr_gas = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "ICEV_gas")
+
+        n.madd(
+            "Load",
+            nodes,
+            suffix=" land transport gas",
+            bus=spatial.gas.nodes,
+            carrier="land transport gas",
+            p_set=p_set_ltr_gas,
+        )
+
+        co2 = (
+                p_set_ltr_gas.sum().sum()
+                / nhours
+                * costs.at["gas", "CO2 intensity"]
+        )
+
+        n.add(
+            "Load",
+            "land transport gas emissions",
+            bus="co2 atmosphere",
+            carrier="land transport gas emissions",
+            p_set=-co2,
+        )
+
 def scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, carrier):
         """
         Scale the demand of land transport for a given carrier to be the equivalent demand of the scenario
         @type carrier: str
-        Carrier can either be 'BEV', 'FCEV' or 'ICEV'.
+        Carrier can either be 'BEV', 'FCEV', 'ICEV_oil' or 'ICEV_gas'.
         """
         # get regional distributed pypsa (pes) demand
         pes_ltr_reg = pes_ltr.sum().to_frame() / 1e6
@@ -1609,11 +1652,13 @@ def scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, carrier):
             clever_ltr_nat = clever_df_ltr["land_ev"]
         elif carrier == 'FCEV':
             clever_ltr_nat = clever_df_ltr["land_h2"]
-        elif carrier == 'ICEV':
+        elif carrier == 'ICEV_oil':
             clever_ltr_nat = clever_df_ltr["land_liquid_fuels"]
+        elif carrier == 'ICEV_gas':
+            clever_ltr_nat = clever_df_ltr["land_gas"]
         else:
             raise Exception("Invalid carrier information. Please enter either 'BEV', \
-            'FCEV' or 'ICEV'.")
+            'FCEV', 'ICEV_oil' or 'ICEV_gas'.")
 
         # distribute CLEVER demand regionally analogue to pypsa (pes) regional distribution
         clever_ltr_reg = distribute_sce_demand_by_pes_layout(clever_ltr_nat, pes_ltr_reg, pop_layout)
@@ -2445,22 +2490,23 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
+    # get CLEVER industrial biomass demand
+    clever_bio_nat = clever_dict["industry"]["solid_biomass"][str(investment_year)]
+
     if options.get("biomass_spatial", options["biomass_transport"]):
-        p_set = (
-            industrial_demand.loc[spatial.biomass.locations, "solid biomass"].rename(
-                index=lambda x: x + " solid biomass for industry"
-            )
-            / nhours
-        )
+        # distribute CLEVER scenario biomass demand
+        pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        clever_bio_reg = distribute_sce_demand_by_pes_layout(clever_bio_nat, pes_bio_reg, pop_layout)
+        p_set_bio = clever_bio_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        p_set = industrial_demand["solid biomass"].sum() / nhours
+        p_set_bio = clever_bio_nat.sum() / nhours
 
     n.madd(
         "Load",
         spatial.biomass.industry,
         bus=spatial.biomass.industry,
         carrier="solid biomass for industry",
-        p_set=p_set,
+        p_set=p_set_bio,
     )
 
     n.madd(
@@ -2500,19 +2546,24 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
-    gas_demand = industrial_demand.loc[nodes, "methane"] / nhours
+    # get scenario industrial gas demand
+    clever_gas_nat = clever_dict["industry"]["gas"][str(investment_year)]
 
     if options["gas_network"]:
-        spatial_gas_demand = gas_demand.rename(index=lambda x: x + " gas for industry")
+        # distribute CLEVER scenario gas demand
+        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        clever_gas_reg = distribute_sce_demand_by_pes_layout(clever_gas_nat, pes_gas_nat, pop_layout)
+        # CLEVER industry demand is in TWh, pypsa demand in MWh
+        p_set_gas = clever_gas_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        spatial_gas_demand = gas_demand.sum()
+        p_set_gas = clever_gas_nat.sum()
 
     n.madd(
         "Load",
         spatial.gas.industry,
         bus=spatial.gas.industry,
         carrier="gas for industry",
-        p_set=spatial_gas_demand,
+        p_set=p_set_gas,
     )
 
     n.madd(
@@ -2546,13 +2597,21 @@ def add_industry(n, costs):
         lifetime=costs.at["cement capture", "lifetime"],
     )
 
+    # get CLEVER scenario industrial hydrogen demand
+    clever_h2_nat = clever_dict["industry"]["h2"][str(investment_year)]
+    pes_h2_reg = industrial_demand.loc[nodes, "hydrogen"].to_frame() / 1e6
+
+    # distribute CLEVER scenario industrial hydrogen demand
+    clever_h2_reg = distribute_sce_demand_by_pes_layout(clever_h2_nat, pes_h2_reg, pop_layout)
+    p_set_h2 = clever_h2_reg * 1e6 / nhours
+
     n.madd(
         "Load",
         nodes,
         suffix=" H2 for industry",
         bus=nodes + " H2",
         carrier="H2 for industry",
-        p_set=industrial_demand.loc[nodes, "hydrogen"] / nhours,
+        p_set=p_set_h2,
     )
 
     shipping_hydrogen_share = get(options["shipping_hydrogen_share"], investment_year)
@@ -2779,7 +2838,17 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("HVC_demand_factor", 1)
-    p_set = demand_factor * industrial_demand.loc[nodes, "naphtha"].sum() / nhours
+
+    # get CLEVER industrial naphtha demand
+    clever_nap_nat = clever_dict["industry"]["naphtha"][str(investment_year)]
+    pes_nap_reg = industrial_demand.loc[nodes, "naphtha"].to_frame() / 1e6
+
+    # distribute CLEVER scenario industrial naphtha demand
+    clever_nap_reg = distribute_sce_demand_by_pes_layout(clever_nap_nat, pes_nap_reg, pop_layout)
+    p_set_nap = clever_nap_reg * 1e6 / nhours
+
+    # p_set_nap = demand_factor * clever_dict["industry"]["naphtha"][str(investment_year)].sum() * 1e6 / nhours
+
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
 
@@ -2788,7 +2857,7 @@ def add_industry(n, costs):
         ["naphtha for industry"],
         bus=spatial.oil.nodes,
         carrier="naphtha for industry",
-        p_set=p_set,
+        p_set=p_set_nap,
     )
 
     demand_factor = options.get("aviation_demand_factor", 1)
@@ -2841,7 +2910,7 @@ def add_industry(n, costs):
         carrier="low-temperature heat for industry",
         p_set=industrial_demand.loc[nodes, "low-temperature heat"] / nhours,
     )
-
+    # TODO: check for current electricity demand industry from CLEVER
     # remove today's industrial electricity demand by scaling down total electricity demand
     for ct in n.buses.country.dropna().unique():
         # TODO map onto n.bus.country
@@ -2858,13 +2927,23 @@ def add_industry(n, costs):
         )
         n.loads_t.p_set[loads_i] *= factor
 
+    # get CLEVER scenario industrial electricity demand
+    clever_ele_nat = clever_dict["industry"]["electricity"][str(investment_year)]
+    pes_ele_reg = industrial_demand.loc[nodes, "electricity"].to_frame() / 1e6
+
+    # distribute CLEVER electricity demand
+    clever_ele_reg = distribute_sce_demand_by_pes_layout(clever_ele_nat, pes_ele_reg, pop_layout)
+
+    # replace pes with CLEVER electricity demand
+    p_set_ele = clever_ele_reg * 1e6 / nhours
+
     n.madd(
         "Load",
         nodes,
         suffix=" industry electricity",
         bus=nodes,
         carrier="industry electricity",
-        p_set=industrial_demand.loc[nodes, "electricity"] / nhours,
+        p_set=p_set_ele,
     )
 
     n.madd(
@@ -3337,9 +3416,9 @@ def get_clever_demand() -> dict:
     # dictionary that states for all sectors which subsectors there are to read
     sectors = {"agriculture": ["electricity", "total"],
                "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal", "total"],
-               "residential": ["electricity", "space_heating", "water_heating"],
+               "residential": ["electricity", "space_heating", "water_heating", "network_heat", "total"],
                "industry": ["electricity", "gas", "h2", "naphtha", "solid_biomass"],
-               "transport": ["land_ev", "land_h2", "land_liquid_fuels", "shipping_liquid_fuels",
+               "transport": ["land_ev", "land_h2", "land_gas", "land_liquid_fuels", "shipping_liquid_fuels",
                              "aviation_liquid_fuels"]
                }
     # read for all sectors each subsector and store in list in corresponding dictionary entry
@@ -3420,6 +3499,15 @@ if __name__ == "__main__":
 
     # import all clever scenario demand as dictionary of dictionaries
     clever_dict = get_clever_demand()
+
+    # calculate DH share from network heat relative to total heat demand for all regions
+    clever_dh_total = clever_dict["residential"]["network_heat"][str(investment_year)] \
+                      + clever_dict["services"]["network_heat"][str(investment_year)]
+    clever_heat_total = clever_dict["residential"]["total"][str(investment_year)] \
+                        + clever_dict["services"]["total"][str(investment_year)] \
+                        - clever_dict["residential"]["electricity"][str(investment_year)] \
+                        - clever_dict["services"]["electricity"][str(investment_year)]
+    dh_share = clever_dh_total / clever_heat_total
 
     patch_electricity_network(n)
 
