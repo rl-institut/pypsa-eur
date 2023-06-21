@@ -1418,7 +1418,7 @@ def add_land_transport(n, costs):
     dsm_profile = pd.read_csv(
         snakemake.input.dsm_profile, index_col=0, parse_dates=True
     )
-
+    # TODO: maybe adjust shares @Daniel
     fuel_cell_share = get(options["land_transport_fuel_cell_share"], investment_year)
     electric_share = get(options["land_transport_electric_share"], investment_year)
     ice_share = get(options["land_transport_ice_share"], investment_year)
@@ -1435,6 +1435,27 @@ def add_land_transport(n, costs):
 
     nodes = pop_layout.index
 
+    # get CLEVER scenario transport demand data for land transport and given investment_year
+    # extracted from dictionary with all clever data
+    clever_df_ltr = pd.DataFrame(
+        {subsec: values[str(investment_year)]
+         for subsec, values in clever_dict["transport"].items()
+         if "land" in subsec
+         }
+    )
+
+    # total land transport demand
+    clever_ltr_total = clever_df_ltr.sum(axis=1)
+
+    # Getting different shares according to CLEVER data
+    # EU30 demand represents sum over all 30 EU countries.
+    # BEV share
+    electric_share = clever_df_ltr.loc["EU30", "land_ev"] / clever_ltr_total.loc["EU30"]
+    # FCEV share
+    fuel_cell_share = clever_df_ltr.loc["EU30", "land_h2"] / clever_ltr_total.loc["EU30"]
+    # ICEV share
+    ice_share = clever_df_ltr.loc["EU30", "land_liquid_fuels"] / clever_ltr_total.loc["EU30"]
+
     if electric_share > 0:
         n.add("Carrier", "Li ion")
 
@@ -1447,15 +1468,12 @@ def add_land_transport(n, costs):
             unit="MWh_el",
         )
 
-        p_set = (
-            electric_share
-            * (
-                transport[nodes]
-                + cycling_shift(transport[nodes], 1)
-                + cycling_shift(transport[nodes], 2)
-            )
-            / 3
-        )
+        # get pypsa (pes) land transport data
+        # TODO: check why running mean of 3h
+        pes_ltr = (transport[nodes] + cycling_shift(transport[nodes], 1)
+                              + cycling_shift(transport[nodes], 2)) / 3
+
+        p_set_ltr_ele = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "BEV")
 
         n.madd(
             "Load",
@@ -1463,10 +1481,15 @@ def add_land_transport(n, costs):
             suffix=" land transport EV",
             bus=nodes + " EV battery",
             carrier="land transport EV",
-            p_set=p_set,
+            p_set=p_set_ltr_ele,
         )
 
-        p_nom = number_cars * options.get("bev_charge_rate", 0.011) * electric_share
+        # regionally distribute electric share
+        pes_ltr_ele_reg = pes_ltr.sum().to_frame() / 1e6
+        pes_ltr_ele_reg['ctry'] = pes_ltr_ele_reg.index.str[:2]
+        clever_ltr_ele_nat = clever_df_ltr["land_ev"]
+        electric_share_reg = pes_ltr_ele_reg.ctry.map(clever_ltr_ele_nat.div(clever_ltr_total.loc["EU30"]))
+        p_nom = number_cars.mul(electric_share_reg) * options.get("bev_charge_rate", 0.011)
 
         n.madd(
             "Link",
@@ -1499,10 +1522,9 @@ def add_land_transport(n, costs):
 
     if electric_share > 0 and options["bev_dsm"]:
         e_nom = (
-            number_cars
+            number_cars.mul(electric_share_reg)
             * options.get("bev_energy", 0.05)
             * options["bev_availability"]
-            * electric_share
         )
 
         n.madd(
@@ -1518,15 +1540,20 @@ def add_land_transport(n, costs):
         )
 
     if fuel_cell_share > 0:
+
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land FCEV transport data with CLEVER demand data
+        p_set_ltr_h2 = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "FCEV")
+
         n.madd(
             "Load",
             nodes,
             suffix=" land transport fuel cell",
             bus=nodes + " H2",
             carrier="land transport fuel cell",
-            p_set=fuel_cell_share
-            / options["transport_fuel_cell_efficiency"]
-            * transport[nodes],
+            p_set=p_set_ltr_h2,
         )
 
     if ice_share > 0:
@@ -1539,7 +1566,11 @@ def add_land_transport(n, costs):
                 unit="MWh_LHV",
             )
 
-        ice_efficiency = options["transport_internal_combustion_efficiency"]
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land ICEV transport data with CLEVER demand data
+        p_set_ltr_liq = scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, "ICEV")
 
         n.madd(
             "Load",
@@ -1547,13 +1578,11 @@ def add_land_transport(n, costs):
             suffix=" land transport oil",
             bus=spatial.oil.nodes,
             carrier="land transport oil",
-            p_set=ice_share / ice_efficiency * transport[nodes],
+            p_set=p_set_ltr_liq,
         )
 
         co2 = (
-            ice_share
-            / ice_efficiency
-            * transport[nodes].sum().sum()
+            p_set_ltr_liq.sum().sum()
             / nhours
             * costs.at["oil", "CO2 intensity"]
         )
@@ -1565,6 +1594,35 @@ def add_land_transport(n, costs):
             carrier="land transport oil emissions",
             p_set=-co2,
         )
+
+def scale_ltr_to_sce_demand(clever_df_ltr, pes_ltr, carrier):
+        """
+        @type carrier: str
+        Carrier can either be 'BEV', 'FCEV' or 'ICEV'.
+        """
+        # get regional distributed pypsa (pes) demand
+        pes_ltr_reg = pes_ltr.sum().to_frame() / 1e6
+
+        # get clever nationally distributed CLEVER demand depending on what carrier we want
+        if carrier == 'BEV':
+            clever_ltr_nat = clever_df_ltr["land_ev"]
+        elif carrier == 'FCEV':
+            clever_ltr_nat = clever_df_ltr["land_h2"]
+        elif carrier == 'ICEV':
+            clever_ltr_nat = clever_df_ltr["land_liquid_fuels"]
+        else:
+            raise Exception("Invalid carrier information. Please enter either 'BEV', \
+            'FCEV' or 'ICEV'.")
+
+        # distribute CLEVER demand regionally analogue to pypsa (pes) regional distribution
+        clever_ltr_reg = distribute_sce_demand_by_pes_layout(clever_ltr_nat, pes_ltr_reg, pop_layout)
+        # get regional scale factor from resulting regionally distributed demand that can be applied to time series data
+        scale_factor = clever_ltr_reg.div(pes_ltr_reg[0])
+
+        # update BEV/FCEV/ICEV demand time series to CLEVER data using regional scale factor
+        p_set_ltr = pes_ltr.mul(scale_factor, axis=1)
+
+        return p_set_ltr
 
 
 def build_heat_demand(n):
@@ -3235,11 +3293,12 @@ def get_clever_demand() -> dict:
     """
     clever_demand = {}
     # dictionary that states for all sectors which subsectors there are to read
-    sectors = {"agriculture": ["electricity","total"],
+    sectors = {"agriculture": ["electricity", "total"],
                "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal"],
                "residential": ["electricity", "space_heating", "water_heating"],
                "industry": ["electricity", "gas", "h2", "naphtha", "solid_biomass"],
-               "transport": ["land_ev","land_h2","land_liquid_fuels","shipping_liquid_fuels","aviation_liquid_fuels"]
+               "transport": ["land_ev", "land_h2", "land_liquid_fuels", "shipping_liquid_fuels",
+                             "aviation_liquid_fuels"]
                }
     # read for all sectors each subsector and store in list in corresponding dictionary entry
     for sector, subsectors in sectors.items():
@@ -3247,13 +3306,32 @@ def get_clever_demand() -> dict:
         clever_demand[sector] = {}
         for subsector in subsectors:
             # read demand with country code as index
-            demand_subsector = pd.read_csv(snakemake.input.clever_demand_files + f"clever_demand_{sector}_{subsector}.csv",
-                                                     decimal=',', delimiter=';',
-                                                     index_col=0).dropna()
+            demand_subsector = pd.read_csv(
+                snakemake.input.clever_demand_files + f"/clever_demand_{sector}_{subsector}.csv",
+                decimal=',', delimiter=';',
+                index_col=0).dropna()
+            # rename Greece and UK to fit PyPSA country ID: 'EL' --> 'GR' in pypsa, 'UK' --> 'GB' in pypsa
+            demand_subsector.rename(index={'EL': 'GR', 'UK': 'GB'}, inplace=True)
             # store subsector demand
             clever_demand[sector][subsector] = demand_subsector
 
     return clever_demand
+
+def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layout):
+
+    # get embedded country codes
+    pes_demand_reg['ctry'] = pes_demand_reg.index.str[:2]
+    # calculate fractions for cluster within a country
+    pes_demand_reg['fraction'] = pes_demand_reg.groupby("ctry").transform(lambda x: x / x.sum())
+
+    # in case pes demand is zero, but sce demand not - weight based on population
+    if pes_demand_reg.fraction.isnull().any():
+        pes_demand_reg['fraction'] = pes_demand_reg.fraction.fillna(pop_layout.fraction)
+
+    # mapping scenario demand to cluster and multiplying by fraction to distribute scenario demand accordingly
+    sce_demand_reg = pes_demand_reg.ctry.map(sce_demand_nat).mul(pes_demand_reg.fraction)
+
+    return sce_demand_reg
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
@@ -3266,7 +3344,7 @@ if __name__ == "__main__":
             simpl="",
             opts="",
             clusters="32",
-            ll="1.0",
+            ll="v1.0",
             sector_opts="25H-T-H-B-I-A-dist1",
             planning_horizons="2050",
         )
@@ -3297,6 +3375,9 @@ if __name__ == "__main__":
     pop_weighted_energy_totals = (
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
+
+    # import all clever scenario demand as dictionary of dictionaries
+    clever_dict = get_clever_demand()
 
     patch_electricity_network(n)
 
