@@ -680,7 +680,7 @@ def extra_functionality(n, snapshots):
     with open("../../../results/agg_p_nom_min.txt", "w") as text_file:
         for index in n.model.constraints['agg_p_nom_min'].indexes["group"]:
             text_file.write(str(n.model.constraints['agg_p_nom_min'].sel(group=[index])))
-    print(a)
+
 
 def solve_network(n, config, opts="", **kwargs):
     set_of_options = config["solving"]["solver"]["options"]
