@@ -220,17 +220,17 @@ def add_slack_variables(n):
         define_nominal_variables(n, c, attr)
 
     n.model.add_constraints(
-        n.model["Generator-p_nom_slack_min_1"] >= 0, name="p_nom_slack_min_1"
+        n.model["Generator-p_nom_slack_min_1"] >= 0, name="Gen_p_nom_slack_min_1"
     )
     n.model.add_constraints(
-        n.model["Generator-p_nom_slack_min_2"] >= 0, name="p_nom_slack_min_2"
+        n.model["Generator-p_nom_slack_min_2"] >= 0, name="Gen_p_nom_slack_min_2"
     )
-    #n.model.add_constraints(
-    #    n.model["Generator-p_nom_slack_max_1"] >= 0, name="p_nom_slack_max_1"
-    #)
-    #n.model.add_constraints(
-    #    n.model["Generator-p_nom_slack_max_2"] >= 0, name="p_nom_slack_max_2"
-    #)
+    n.model.add_constraints(
+        n.model["Link-p_nom_slack_min_1"] >= 0, name="Link_p_nom_slack_min_1"
+    )
+    n.model.add_constraints(
+        n.model["Link-p_nom_slack_min_2"] >= 0, name="Link_p_nom_slack_min_2"
+    )
 
 
 def add_CCL_constraints(n, config):
@@ -260,56 +260,68 @@ def add_CCL_constraints(n, config):
         config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
 
-    range = 0
-    agg_p_nom_min = (agg_p_nom_sce[target_year] - range).fillna(0).clip(lower=0.1) # non-negative values # TODO: fillna()?
-    #agg_p_nom_max = (agg_p_nom_sce[target_year] + range).dropna()
-
+    agg_p_nom_min = (agg_p_nom_sce[target_year]).fillna(0).clip(lower=0.1) # non-negative values # TODO: fillna()?
+    minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
     logger.info("Adding generation capacity constraints per carrier and country")
-
-    p_nom = n.model["Generator-p_nom"]
-
-    slack_min_1 = n.model["Generator-p_nom_slack_min_1"]
-    slack_min_2 = n.model["Generator-p_nom_slack_min_2"]
-    #slack_max_1 = n.model["Generator-p_nom_slack_max_1"]
-    #slack_max_2 = n.model["Generator-p_nom_slack_max_2"]
-
-    n.generators['p_nom_slack_min_1_opt'] = np.nan
-    n.generators['p_nom_slack_min_2_opt'] = np.nan
-    #n.generators['p_nom_slack_max_1_opt'] = np.nan
-    #n.generators['p_nom_slack_max_2_opt'] = np.nan
-
-    gens = n.generators.query("p_nom_extendable").rename_axis(index="Generator-ext") # .query("p_nom_extendable")
+    args = [
+        ["Generator", "p_nom", "p_nom_slack_min_1", "p_nom_slack_min_2",
+         "bus", "carrier"],
+        ["Link", "p_nom", "p_nom_slack_min_1", "p_nom_slack_min_2",
+         "bus1", "carrier"]]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas'}
-    gens["carrier"] = gens.carrier.replace(carrier_grouper)
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar"}
+    exprs = []
 
-    grouper = [gens.bus.map(n.buses.country), gens.carrier]
-    grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper), dims=["Generator-ext"])
-    lhs = p_nom.groupby(grouper).sum().rename(bus="country")
+    for arg in args:
+        c, attr1, attr2, attr3, column1, column2 = arg
+        p_nom = n.model[f"{c}-{attr1}"]
+        slack_min_1 = n.model[f"{c}-{attr2}"]
+        slack_min_2 = n.model[f"{c}-{attr3}"]
+        if c == "Generator":
+            n.generators['p_nom_slack_min_1_opt'] = np.nan
+            n.generators['p_nom_slack_min_2_opt'] = np.nan
+            gens = n.generators.query("p_nom_extendable").rename_axis(
+                index="Generator-ext")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            gens.bus = [bus.replace(" low voltage", "") for bus in gens.bus]
 
-    lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
-    lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
-    #lhs_slack_max_1 = slack_max_1.groupby(grouper).sum().rename(bus="country")
-    #lhs_slack_max_2 = slack_max_2.groupby(grouper).sum().rename(bus="country")
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["Generator-ext"])
+            lhs = p_nom.groupby(grouper).sum().rename(bus="country")
 
-    minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
+        else:
+            n.links['p_nom_slack_min_1_opt'] = np.nan
+            n.links['p_nom_slack_min_2_opt'] = np.nan
+            gens = n.links.query("p_nom_extendable").rename_axis(
+                index="Link-ext")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+
+            grouper = [gens.bus1.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["Link-ext"])
+            lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
+
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
+
+        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+        expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
+                lhs_slack_min_2.sel(group=index))
+        exprs.append(expr)
+    lhs = merge(exprs, join="outer")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) - lhs_slack_min_2.sel(group=index) ==
-            minimum.loc[index] , name="agg_p_nom_min"
+            lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min"
         )
-    '''
-    maximum = xr.DataArray(agg_p_nom_max).rename(dim_0="group")
-    index = maximum.indexes["group"].intersection(lhs.indexes["group"])
-    if not index.empty:
-        n.model.add_constraints(
-            lhs.sel(group=index) + lhs_slack_max_1.sel(group=index) - lhs_slack_max_2.sel(group=index) <=
-            maximum.loc[index], name="agg_p_nom_max"
-        )'''
+    #print(n.model.constraints["agg_p_nom_min"])
+
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
@@ -663,9 +675,11 @@ def extra_functionality(n, snapshots):
             add_EQ_constraints(n, o)
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
-    print(n.model.constraints)
     add_slacks_to_objective(n, snapshots)
-
+    with open("../../../results/agg_p_nom_min.txt", "w") as text_file:
+        for index in n.model.constraints['agg_p_nom_min'].indexes["group"]:
+            text_file.write(str(n.model.constraints['agg_p_nom_min'].sel(group=[index])))
+    print(a)
 
 def solve_network(n, config, opts="", **kwargs):
     set_of_options = config["solving"]["solver"]["options"]
@@ -684,6 +698,7 @@ def solve_network(n, config, opts="", **kwargs):
 
     # set p_nom_ext to True
     n.generators = n.generators.assign(p_nom_extendable=True)
+    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear']), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
