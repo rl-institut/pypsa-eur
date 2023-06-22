@@ -272,7 +272,8 @@ def add_CCL_constraints(n, config):
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar"}
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
+                       "ror": "hydro"}
     exprs = []
 
     for arg in args:
