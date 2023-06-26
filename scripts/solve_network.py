@@ -68,7 +68,7 @@ def _add_land_use_constraint(n, config):
     for carrier in ["solar", "onwind", "offwind-ac", "offwind-dc"]:
         ext_i = (n.generators.carrier == carrier) & ~n.generators.p_nom_extendable
         if not "location" in n.buses:
-           n.buses["location"] = n.buses.index.str[:2]
+           n.buses["location"] = n.buses.index.str[:4]
         existing = (
             n.generators.loc[ext_i, "p_nom"]
             .groupby(n.generators.bus.map(n.buses.location))
@@ -644,7 +644,7 @@ def add_slacks_to_objective(n, snapshots):
     m = n.model
     objective = []
     for c, attr in lookup.query("cost").index:
-        cost = 1e6
+        cost = 1e7
         operation = m[f"{c}-{attr}"]
         objective.append((operation * cost).sum())
     objective.append(m.objective)
