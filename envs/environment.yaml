@@ -28,7 +28,7 @@ dependencies:
 - numpy<1.24
 - pandas>=1.4
 - geopandas>=0.11.0
-- xarray
+- xarray<=2023.2.0
 - rioxarray
 - netcdf4
 - networkx
