@@ -2635,6 +2635,7 @@ def add_industry(n, costs):
     )
     all_navigation = domestic_navigation + international_navigation
     # p_set = all_navigation * 1e6 / nhours
+    countries = snakemake.config["countries"]
 
     if shipping_hydrogen_share:
         oil_efficiency = options.get(
@@ -2751,7 +2752,7 @@ def add_industry(n, costs):
         # p_set_oil = shipping_oil_share * p_set.sum()
 
         # get CLEVER oil shipping demand and sum for copperplated oil demand
-        clever_shi_oil = clever_dict["transport"]["shipping_liquid_fuels"][str(investment_year)]
+        clever_shi_oil = clever_dict["transport"]["shipping_liquid_fuels"][str(investment_year)].loc[countries]
         p_set_shi_oil = clever_shi_oil.sum() * 1e6 / nhours
 
 
@@ -2778,7 +2779,7 @@ def add_industry(n, costs):
         # p_set_gas = shipping_gas_share * p_set.sum()
 
         # get CLEVER oil shipping demand
-        clever_shi_gas_nat = clever_dict["transport"]["shipping_gas"][str(investment_year)]
+        clever_shi_gas_nat = clever_dict["transport"]["shipping_gas"][str(investment_year)].loc[countries]
 
         if get(options["gas_distribution_grid"], investment_year) == True:
             # use total pypsa shipping demand to distribute CLEVER gas shipping demand
@@ -2904,22 +2905,26 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("aviation_demand_factor", 1)
-    all_aviation = ["total international aviation", "total domestic aviation"]
-    p_set = (
-        demand_factor
-        * pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1).sum()
-        * 1e6
-        / nhours
-    )
+    # all_aviation = ["total international aviation", "total domestic aviation"]
+    # p_set = (
+    #     demand_factor
+    #     * pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1).sum()
+    #     * 1e6
+    #     / nhours
+    # )
     if demand_factor != 1:
         logger.warning(f"Changing aviation demand by {demand_factor*100-100:+.2f}%.")
+
+    # get CLEVER aviation demand on liquid fuels (kerosene) and sum to one node
+    clever_avi_liq = clever_dict["transport"]["aviation_liquid_fuels"][str(investment_year)].loc[countries]
+    p_set_avi_ker = demand_factor * clever_avi_liq.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
         ["kerosene for aviation"],
         bus=spatial.oil.nodes,
         carrier="kerosene for aviation",
-        p_set=p_set,
+        p_set=p_set_avi_ker,
     )
 
     # NB: CO2 gets released again to atmosphere when plastics decay or kerosene is burned
