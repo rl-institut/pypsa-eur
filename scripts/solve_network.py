@@ -260,7 +260,7 @@ def add_CCL_constraints(n, config):
         config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
 
-    agg_p_nom_min = (agg_p_nom_sce[target_year]).fillna(0).clip(lower=0.1) # non-negative values # TODO: fillna()?
+    agg_p_nom_min = (agg_p_nom_sce[target_year]).fillna(0)#.clip(lower=0.1) # non-negative values # TODO: fillna()?
     minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
     logger.info("Adding generation capacity constraints per carrier and country")
     args = [
@@ -307,7 +307,6 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
-
             lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
             lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
 
@@ -321,8 +320,6 @@ def add_CCL_constraints(n, config):
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min"
         )
-    #print(n.model.constraints["agg_p_nom_min"])
-
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
@@ -677,9 +674,9 @@ def extra_functionality(n, snapshots):
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
     add_slacks_to_objective(n, snapshots)
-    with open("../../../results/agg_p_nom_min.txt", "w") as text_file:
-        for index in n.model.constraints['agg_p_nom_min'].indexes["group"]:
-            text_file.write(str(n.model.constraints['agg_p_nom_min'].sel(group=[index])))
+    # with open("../../../results/agg_p_nom_min.txt", "w") as text_file:
+    #     for index in n.model.constraints['agg_p_nom_min'].indexes["group"]:
+    #         text_file.write(str(n.model.constraints['agg_p_nom_min'].sel(group=[index])))
 
 
 def solve_network(n, config, opts="", **kwargs):
