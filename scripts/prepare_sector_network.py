@@ -2551,10 +2551,10 @@ def add_industry(n, costs):
 
     if options["gas_network"]:
         # distribute CLEVER scenario gas demand
-        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        pes_gas_nat = industrial_demand.loc[nodes, "methane"].to_frame() / 1e6
         clever_gas_reg = distribute_sce_demand_by_pes_layout(clever_gas_nat, pes_gas_nat, pop_layout)
         # CLEVER industry demand is in TWh, pypsa demand in MWh
-        p_set_gas = clever_gas_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
+        p_set_gas = clever_gas_reg.rename(index=lambda x: x + " gas for industry") * 1e6 / nhours
     else:
         p_set_gas = clever_gas_nat.sum()
 
@@ -2792,7 +2792,7 @@ def add_industry(n, costs):
 
         n.madd(
             "Load",
-            spatial.gas.nodes,
+            nodes,
             suffix=" shipping gas",
             bus=spatial.gas.nodes,
             carrier="shipping gas",
@@ -2883,15 +2883,8 @@ def add_industry(n, costs):
 
     demand_factor = options.get("HVC_demand_factor", 1)
 
-    # get CLEVER industrial naphtha demand
-    clever_nap_nat = clever_dict["industry"]["naphtha"][str(investment_year)]
-    pes_nap_reg = industrial_demand.loc[nodes, "naphtha"].to_frame() / 1e6
-
-    # distribute CLEVER scenario industrial naphtha demand
-    clever_nap_reg = distribute_sce_demand_by_pes_layout(clever_nap_nat, pes_nap_reg, pop_layout)
-    p_set_nap = clever_nap_reg * 1e6 / nhours
-
-    # p_set_nap = demand_factor * clever_dict["industry"]["naphtha"][str(investment_year)].sum() * 1e6 / nhours
+    p_set_nap = demand_factor * clever_dict["industry"]["naphtha"].loc[
+        countries, str(investment_year)].sum() * 1e6 / nhours
 
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
