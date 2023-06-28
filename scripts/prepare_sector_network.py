@@ -2777,23 +2777,33 @@ def add_industry(n, costs):
         # get and sum scenario gas shipping demand
         sce_shi_gas = get_transport_demand_by_subsector(df_sce_tran, 'shipping', 'methane', investment_year)
 
-        if get(options["gas_distribution_grid"], investment_year) == True:
+        if options["gas_network"]:
             # use total pypsa shipping demand to distribute CLEVER gas shipping demand
             pes_shi_reg = all_navigation.to_frame()
             sce_shi_gas_reg = distribute_sce_demand_by_pes_layout(sce_shi_gas, pes_shi_reg, pop_layout)
             # convert to MW
             p_set_shi_gas = sce_shi_gas_reg * 1e6 / nhours
+
+            n.madd(
+                "Load",
+                nodes,
+                suffix=" shipping gas",
+                bus=spatial.gas.nodes,
+                carrier="shipping gas",
+                p_set=p_set_shi_gas,
+            )
+
         else:
             p_set_shi_gas = sce_shi_gas.sum() * 1e6 / nhours
 
-        n.madd(
-            "Load",
-            spatial.gas.nodes,
-            suffix=" shipping gas",
-            bus=spatial.gas.nodes,
-            carrier="shipping gas",
-            p_set=p_set_shi_gas,
-        )
+            n.madd(
+                "Load",
+                spatial.gas.nodes,
+                suffix=" shipping gas",
+                bus=spatial.gas.nodes,
+                carrier="shipping gas",
+                p_set=p_set_shi_gas,
+            )
 
         co2 = p_set_shi_gas * costs.at["gas", "CO2 intensity"]
 
