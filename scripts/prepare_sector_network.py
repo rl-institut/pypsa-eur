@@ -3160,14 +3160,27 @@ def add_agriculture(n, costs):
 
     # machinery
 
-    # get scenarios agricultural demand on liquids (oil)
-    base_year = df_sce_agr.Year.min()
-    oil_share = get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', investment_year).div \
-                (get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', base_year))
-    electric_share = 1 - oil_share
-
     # electric_share = get(options["agriculture_machinery_electric_share"], investment_year)
     # oil_share = get(options["agriculture_machinery_oil_share"], investment_year)
+
+    # get scenarios agricultural demand on liquids (oil)
+    countries = snakemake.config["countries"]
+    base_year = df_sce_agr.Year.min()
+    # when demand for liquid fuels in agriculture machinery rises above base levels, it is assumed that the
+    # share of oil is still 100%. If not, it is always the fraction in relation to the base year
+    oil_share = pd.Series(np.where(get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', investment_year) > \
+                                   (get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', base_year)), 1,
+                                   get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', investment_year).div \
+                                       (get_agricultural_demand_by_carrier(df_sce_agr, 'liquids', base_year))),
+                          index=countries)
+    # the other agriculture machinery is electrified
+    electric_share = 1 - oil_share
+
+    # regionalise oil and electric share
+    pes_agr_all_reg_df = pes_agr_all_reg.to_frame()
+    pes_agr_all_reg_df["ctry"] = pes_agr_all_reg.index.str[:2]
+    oil_share_reg = pes_agr_all_reg_df.ctry.map(oil_share)
+    electric_share_reg = pes_agr_all_reg_df.ctry.map(electric_share)
 
     total_share = (electric_share + oil_share).mean()
     if total_share != 1:
@@ -3190,7 +3203,7 @@ def add_agriculture(n, costs):
             suffix=" agriculture machinery electric",
             bus=nodes,
             carrier="agriculture machinery electric",
-            p_set=electric_share
+            p_set=electric_share_reg
             / efficiency_gain
             * p_set_agr_mach,
         )
@@ -3201,12 +3214,12 @@ def add_agriculture(n, costs):
             ["agriculture machinery oil"],
             bus=spatial.oil.nodes,
             carrier="agriculture machinery oil",
-            p_set=oil_share * p_set_agr_mach.sum(),
+            p_set=(oil_share_reg * p_set_agr_mach).sum(),
         )
 
         co2 = (
-            oil_share
-            * p_set_agr_mach.sum()
+            (oil_share_reg
+            * p_set_agr_mach).sum()
             * costs.at["oil", "CO2 intensity"]
         )
 
