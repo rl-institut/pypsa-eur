@@ -2787,17 +2787,27 @@ def add_industry(n, costs):
             clever_shi_gas_reg = distribute_sce_demand_by_pes_layout(clever_shi_gas_nat, pes_shi_reg, pop_layout)
             # convert to MW
             p_set_shi_gas = clever_shi_gas_reg * 1e6 / nhours
+
+            n.madd(
+                "Load",
+                nodes,
+                suffix=" shipping gas",
+                bus=spatial.gas.nodes,
+                carrier="shipping gas",
+                p_set=p_set_shi_gas,
+            )
+
         else:
             p_set_shi_gas = clever_shi_gas_nat.sum() * 1e6 / nhours
 
-        n.madd(
-            "Load",
-            nodes,
-            suffix=" shipping gas",
-            bus=spatial.gas.nodes,
-            carrier="shipping gas",
-            p_set=p_set_shi_gas,
-        )
+            n.madd(
+                "Load",
+                spatial.gas.nodes,
+                suffix=" shipping gas",
+                bus=spatial.gas.nodes,
+                carrier="shipping gas",
+                p_set=p_set_shi_gas,
+            )
 
         # co2 only with EU node
         co2 = p_set_shi_gas.sum() * costs.at["gas", "CO2 intensity"]
