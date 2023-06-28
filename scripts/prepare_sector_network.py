@@ -2781,7 +2781,7 @@ def add_industry(n, costs):
         # get CLEVER oil shipping demand
         clever_shi_gas_nat = clever_dict["transport"]["shipping_gas"][str(investment_year)].loc[countries]
 
-        if get(options["gas_distribution_grid"], investment_year) == True:
+        if options["gas_network"]:
             # use total pypsa shipping demand to distribute CLEVER gas shipping demand
             pes_shi_reg = all_navigation.to_frame()
             clever_shi_gas_reg = distribute_sce_demand_by_pes_layout(clever_shi_gas_nat, pes_shi_reg, pop_layout)
