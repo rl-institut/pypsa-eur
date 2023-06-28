@@ -3112,7 +3112,23 @@ def add_agriculture(n, costs):
     nodes = pop_layout.index
     nhours = n.snapshot_weightings.generators.sum()
 
+    countries = snakemake.config["countries"]
+
+    # pes total agricultural demand and fraction of subsectors
+    pes_agr_total_reg = pop_weighted_energy_totals.loc[nodes, "total agriculture"]
+    frac_agr_heat = pop_weighted_energy_totals.loc[nodes, "total agriculture heat"].div(pes_agr_total_reg)
+    frac_agr_elec = pop_weighted_energy_totals.loc[nodes, "total agriculture electricity"].div(pes_agr_total_reg)
+    frac_agr_mach = pop_weighted_energy_totals.loc[nodes, "total agriculture machinery"].div(pes_agr_total_reg)
+
+    # get total CLEVER total agriculture demand to distribute to electricity, heating, machinery oil
+    clever_agr_total_nat = clever_dict["agriculture"]["total"][str(investment_year)].loc[countries]
+
+    # scale and distribute CLEVER total agriculture demand with PyPSA total agriculture demand
+    clever_agr_total_reg = distribute_sce_demand_by_pes_layout(clever_agr_total_nat, pes_agr_total_reg.to_frame(),
+                                                               pop_layout)
+
     # electricity
+    p_set_agr_elec = clever_agr_total_reg * frac_agr_elec * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -3120,12 +3136,11 @@ def add_agriculture(n, costs):
         suffix=" agriculture electricity",
         bus=nodes,
         carrier="agriculture electricity",
-        p_set=pop_weighted_energy_totals.loc[nodes, "total agriculture electricity"]
-        * 1e6
-        / nhours,
+        p_set=p_set_agr_elec,
     )
 
     # heat
+    p_set_agr_heat = clever_agr_total_reg * frac_agr_heat * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -3133,29 +3148,53 @@ def add_agriculture(n, costs):
         suffix=" agriculture heat",
         bus=nodes + " services rural heat",
         carrier="agriculture heat",
-        p_set=pop_weighted_energy_totals.loc[nodes, "total agriculture heat"]
-        * 1e6
-        / nhours,
+        p_set=p_set_agr_heat,
     )
 
     # machinery
 
-    electric_share = get(
-        options["agriculture_machinery_electric_share"], investment_year
+    # get CLEVER scenario agriculture demand data for carriers
+    # extracted from dictionary with all clever data for investment year
+    clever_df_agr_carrier = pd.DataFrame(
+        {subsec: values.loc[countries,str(investment_year)]
+         for subsec, values in clever_dict["agriculture"].items()
+         }
     )
-    oil_share = get(options["agriculture_machinery_oil_share"], investment_year)
+    # data for base year
+    base_year = clever_dict["agriculture"]["total"].columns.min()
+    clever_df_agr_carrier_base = pd.DataFrame(
+        {subsec: values.loc[countries,base_year]
+         for subsec, values in clever_dict["agriculture"].items()
+         }
+    )
+    # determine oil share, when liquid fuels greater than in base year oil share is still 1.
+    # Otherwise, oil share is fraction relative to liquid fuels base year
+    oil_share = pd.Series(
+        np.where(clever_df_agr_carrier["liquid_fuels"] > clever_df_agr_carrier_base["liquid_fuels"], 1,
+                 clever_df_agr_carrier["liquid_fuels"] / clever_df_agr_carrier_base["liquid_fuels"]), index=countries)
+    # electric share and gas share are distributed from remaining share by
+    # their relative fraction to each other in agriculture carrier demands
+    electric_share = (1 - oil_share) * clever_df_agr_carrier["electricity"] / (
+                clever_df_agr_carrier["electricity"] + clever_df_agr_carrier["gas"])
+    gas_share = (1 - oil_share) * clever_df_agr_carrier["gas"] / (
+                clever_df_agr_carrier["electricity"] + clever_df_agr_carrier["gas"])
+    total_share = (electric_share + oil_share + gas_share).mean()
 
-    total_share = electric_share + oil_share
+    # regionalise oil, electric and gas shares
+    pes_agr_total_reg_df = pes_agr_total_reg.to_frame()
+    pes_agr_total_reg_df["ctry"] = pes_agr_total_reg.index.str[:2]
+    oil_share_reg = pes_agr_total_reg_df.ctry.map(oil_share)
+    electric_share_reg = pes_agr_total_reg_df.ctry.map(electric_share)
+    gas_share_reg = pes_agr_total_reg_df.ctry.map(gas_share)
+
     if total_share != 1:
         logger.warning(
             f"Total agriculture machinery shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
         )
 
-    machinery_nodal_energy = pop_weighted_energy_totals.loc[
-        nodes, "total agriculture machinery"
-    ]
+    p_set_agr_mach = clever_agr_total_reg * frac_agr_mach * 1e6 / nhours
 
-    if electric_share > 0:
+    if electric_share.any() > 0:
         efficiency_gain = (
             options["agriculture_machinery_fuel_efficiency"]
             / options["agriculture_machinery_electric_efficiency"]
@@ -3167,27 +3206,23 @@ def add_agriculture(n, costs):
             suffix=" agriculture machinery electric",
             bus=nodes,
             carrier="agriculture machinery electric",
-            p_set=electric_share
+            p_set=electric_share_reg
             / efficiency_gain
-            * machinery_nodal_energy
-            * 1e6
-            / nhours,
+            * p_set_agr_mach,
         )
 
-    if oil_share > 0:
+    if oil_share.any() > 0:
         n.madd(
             "Load",
             ["agriculture machinery oil"],
             bus=spatial.oil.nodes,
             carrier="agriculture machinery oil",
-            p_set=oil_share * machinery_nodal_energy.sum() * 1e6 / nhours,
+            p_set=(oil_share_reg * p_set_agr_mach).sum(),
         )
 
         co2 = (
             oil_share
-            * machinery_nodal_energy.sum()
-            * 1e6
-            / nhours
+            * p_set_agr_mach.sum()
             * costs.at["oil", "CO2 intensity"]
         )
 
@@ -3196,6 +3231,31 @@ def add_agriculture(n, costs):
             "agriculture machinery oil emissions",
             bus="co2 atmosphere",
             carrier="agriculture machinery oil emissions",
+            p_set=-co2,
+        )
+
+    if gas_share.any() > 0:
+
+        n.madd(
+            "Load",
+            nodes,
+            suffix=" agriculture machinery gas",
+            bus=spatial.gas.nodes,
+            carrier="agriculture machinery gas",
+            p_set=gas_share_reg * p_set_agr_mach,
+        )
+
+        co2 = (
+            (gas_share_reg
+            * p_set_agr_mach).sum()
+            * costs.at["gas", "CO2 intensity"]
+        )
+
+        n.add(
+            "Load",
+            "agriculture machinery gas emissions",
+            bus="co2 atmosphere",
+            carrier="agriculture machinery gas emissions",
             p_set=-co2,
         )
 
@@ -3462,7 +3522,7 @@ def get_clever_demand() -> dict:
     """
     clever_demand = {}
     # dictionary that states for all sectors which subsectors there are to read
-    sectors = {"agriculture": ["electricity", "total"],
+    sectors = {"agriculture": ["electricity", "liquid_fuels", "gas", "total"],
                "services": ["electricity", "ambient_heat", "network_heat", "solar_thermal", "total"],
                "residential": ["electricity", "space_heating", "space_heating_electricity", "water_heating",
                                "water_heating_electricity", "network_heat", "total"],
