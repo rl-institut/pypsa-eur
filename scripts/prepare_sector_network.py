@@ -3624,18 +3624,21 @@ if __name__ == "__main__":
     clever_dict = get_clever_demand()
 
     # calculate DH share from network heat relative to total heat demand for all regions
+    # total DH demand from residential and services
     clever_dh_total = clever_dict["residential"]["network_heat"][str(investment_year)] \
                       + clever_dict["services"]["network_heat"][str(investment_year)]
+    # residential total heating demand
     clever_heat_residential = clever_dict["residential"]["space_heating"][str(investment_year)] \
                               + clever_dict["residential"]["water_heating"][str(investment_year)]
     # calculate share of residential electricity heating of residential total electricity to apply to services
     share_electric_heat = (clever_dict["residential"]["space_heating_electricity"][str(investment_year)] +
                            clever_dict["residential"]["water_heating_electricity"][str(investment_year)]) / \
                           clever_dict["residential"]["electricity"][str(investment_year)]
-    # approximate services heating demand by subtracting non-heating electricity demand
-    # from total services energy demand
+    # approximate services total heating demand by subtracting
+    # non-heating electricity demand from total services energy demand
     clever_heat_services = clever_dict["services"]["total"][str(investment_year)] \
                            - (1 - share_electric_heat) * clever_dict["services"]["electricity"][str(investment_year)]
+    # calculate DH share as total DH demand divided by total heating demand services and residential
     dh_share = clever_dh_total / (clever_heat_services + clever_heat_residential)
 
     patch_electricity_network(n)
