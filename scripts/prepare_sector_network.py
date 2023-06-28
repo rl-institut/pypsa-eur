@@ -3577,6 +3577,49 @@ def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layo
 
     return sce_demand_reg
 
+def scale_district_heating_dem(n, year):
+
+    # calculate DH share from network heat relative to total heat demand for all modelled countries
+    countries = snakemake.config["countries"]
+    # total DH demand from residential and services
+    clever_dh_total = (clever_dict["residential"]["network_heat"][str(year)] \
+                       + clever_dict["services"]["network_heat"][str(year)])[countries]
+    # residential total heating demand
+    clever_heat_residential = (clever_dict["residential"]["space_heating"][str(year)] \
+                               + clever_dict["residential"]["water_heating"][str(year)])[countries]
+    # calculate share of residential electricity heating of residential total electricity to apply to services
+    share_electric_heat = (clever_dict["residential"]["space_heating_electricity"][str(year)] +
+                           clever_dict["residential"]["water_heating_electricity"][str(year)]) / \
+                          clever_dict["residential"]["electricity"][str(year)]
+    # approximate services total heating demand by subtracting
+    # non-heating electricity demand from total services energy demand
+    clever_heat_services = (clever_dict["services"]["total"][str(year)] \
+                            - (1 - share_electric_heat) \
+                            * clever_dict["services"]["electricity"][str(year)])[countries]
+    # calculate DH share as total DH demand divided by total heating demand services and residential
+    dh_share = clever_dh_total / (clever_heat_services + clever_heat_residential)
+
+    # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
+
+    # TODO: resolve regionally
+    # get scenario share and pes demands
+    share = dh_share.mean()
+    heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
+    heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                                             ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
+    heat_dh_total = share * heat_total
+
+    # calculate scaling factors
+    scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
+    scale_factor_dh = heat_dh_total / n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"].sum().sum()
+
+    # scale demands
+    n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                            ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh
+    n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh
+
+    print("district heating share is scaled up by; ", scale_factor_dh)
+
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
@@ -3623,24 +3666,6 @@ if __name__ == "__main__":
     # import all clever scenario demand as dictionary of dictionaries
     clever_dict = get_clever_demand()
 
-    # calculate DH share from network heat relative to total heat demand for all regions
-    # total DH demand from residential and services
-    clever_dh_total = clever_dict["residential"]["network_heat"][str(investment_year)] \
-                      + clever_dict["services"]["network_heat"][str(investment_year)]
-    # residential total heating demand
-    clever_heat_residential = clever_dict["residential"]["space_heating"][str(investment_year)] \
-                              + clever_dict["residential"]["water_heating"][str(investment_year)]
-    # calculate share of residential electricity heating of residential total electricity to apply to services
-    share_electric_heat = (clever_dict["residential"]["space_heating_electricity"][str(investment_year)] +
-                           clever_dict["residential"]["water_heating_electricity"][str(investment_year)]) / \
-                          clever_dict["residential"]["electricity"][str(investment_year)]
-    # approximate services total heating demand by subtracting
-    # non-heating electricity demand from total services energy demand
-    clever_heat_services = clever_dict["services"]["total"][str(investment_year)] \
-                           - (1 - share_electric_heat) * clever_dict["services"]["electricity"][str(investment_year)]
-    # calculate DH share as total DH demand divided by total heating demand services and residential
-    dh_share = clever_dh_total / (clever_heat_services + clever_heat_residential)
-
     patch_electricity_network(n)
 
     spatial = define_spatial(pop_layout.index, options)
@@ -3682,6 +3707,8 @@ if __name__ == "__main__":
 
     if "H" in opts:
         add_heat(n, costs)
+
+        scale_district_heating_dem(n, investment_year)
 
     if "B" in opts:
         add_biomass(n, costs)
