@@ -3224,8 +3224,8 @@ def add_agriculture(n, costs):
         )
 
         co2 = (
-            oil_share
-            * p_set_agr_mach.sum()
+            (oil_share_reg
+            * p_set_agr_mach).sum()
             * costs.at["oil", "CO2 intensity"]
         )
 
