@@ -2961,7 +2961,18 @@ def add_industry(n, costs):
         carrier="low-temperature heat for industry",
         p_set=industrial_demand.loc[nodes, "low-temperature heat"] / nhours,
     )
-    # TODO: check for current electricity demand industry from CLEVER
+
+    # get CLEVER current (base year) industrial electricity demand
+    base_year = clever_dict["industry"]["electricity"].columns.min()
+    clever_cel_nat = clever_dict["industry"]["electricity"][base_year] * 1e6
+    pes_cel_reg = industrial_demand.loc[nodes, "current electricity"].to_frame()
+
+    # distribute CLEVER demand
+    clever_cel_reg = distribute_sce_demand_by_pes_layout(clever_cel_nat, pes_cel_reg, pop_layout)
+
+    # replace pes with sce demand
+    industrial_demand["current electricity"] = clever_cel_reg
+
     # remove today's industrial electricity demand by scaling down total electricity demand
     for ct in n.buses.country.dropna().unique():
         # TODO map onto n.bus.country
