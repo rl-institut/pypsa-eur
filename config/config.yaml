@@ -83,15 +83,17 @@ enable:
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
 # this is also over-ridden if cb is set in sector_opts
-# TODO: adjust
+
+# derived from http://data/specific/Results/Results_EU.html#eu for EU27
+# and https://www.eea.europa.eu/data-and-maps/data/data-viewers/greenhouse-gases-viewer for 1990 value of EU27 countries
 co2_budget:
-  2020: 0.701
-  2025: 0.524
-  2030: 0.297
-  2035: 0.150
-  2040: 0.071
-  2045: 0.032
-  2050: 0.000
+  2020: 0.7007 # 3264.1 / 4658.2
+  2025: 0.5409 # 2519.8 / 4658.2
+  2030: 0.3418 # 1592.4 / 4658.2
+  2035: 0.1821 # 848.3 / 4658.2
+  2040: 0.0727 # 338.5 / 4658.2
+  2045: 0.0096 # 44.8 / 4658.2
+  2050: -0.0123 # -57.5 / 4658.2
 
 electricity:
   voltages: [220., 300., 380.]
