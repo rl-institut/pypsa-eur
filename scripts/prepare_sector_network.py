@@ -3689,6 +3689,26 @@ if __name__ == "__main__":
 
     patch_electricity_network(n)
 
+    # scale electricity time series data to CLEVER demand
+    # get scenarios electricity demand for residential and services buildings
+    clever_ele_res = clever_dict["residential"]["electricity"][str(investment_year)]
+    clever_ele_ser = clever_dict["services"]["electricity"][str(investment_year)]
+
+    # get scenarios electricity demand for industry
+    clever_ele_ind = clever_dict["industry"]["electricity"][str(investment_year)]
+
+    # get regional distributed pes demand and nationally distributed clever demand per sector
+    clever_ele_nat = pd.concat([clever_ele_res, clever_ele_ser, clever_ele_ind], axis=1).sum(axis=1)
+    pes_ele_reg = n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].sum().to_frame() / 1e6
+
+    # scale and distribute
+    clever_ele_reg = distribute_sce_demand_by_pes_layout(clever_ele_nat, pes_ele_reg, pop_layout)
+    scale_factor = clever_ele_reg.div(pes_ele_reg[0])
+
+    # update electricity demand to sce data using regional scale factor
+    n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"] = \
+        n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].mul(scale_factor, axis=1)
+
     spatial = define_spatial(pop_layout.index, options)
 
     if snakemake.config["foresight"] == "myopic":
