@@ -204,7 +204,7 @@ def build_sce_capacities(input_path, sheet_name, output_path):
                        'offshore wind_stand alone': 'offwind',
                        'solar_stand alone': 'solar'}
     # {'|'.join(['Beer', 'Alcohol', 'Beverage', 'Drink']): 'Drink'}
-    eu27_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GB|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK'  #'CY','MT'
+    eu27_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK|UK'  #'CY','MT'
 
     df = pd.read_excel(input_path, sheet_name)
 
@@ -221,6 +221,7 @@ def build_sce_capacities(input_path, sheet_name, output_path):
     # add country column
     df_sup = df_sup[df_sup.Node.str.contains(eu27_str)]
     df_sup["country"] = df_sup.Node.str[:2]
+    df_sup["country"] = df_sup["country"].replace({'UK': "GB"})
 
     df_agg_caps = pd.pivot_table(df_sup, values='Value', index=['country', 'carrier'],
                                  columns=['Year'], aggfunc=np.sum)
