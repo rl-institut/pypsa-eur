@@ -3579,6 +3579,46 @@ def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layo
 
 def scale_district_heating_dem(n, year):
 
+    # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
+
+    # get CLEVER share for modelled countries and pes demands
+    share = calculate_clever_dh_share(clever_dict, year)
+    heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
+    heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                                             ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
+    heat_dh_total = share * heat_total
+
+    # calculate scaling factors
+    scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
+    scale_factor_dh = heat_dh_total / n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"].sum().sum()
+
+    # convert scaling factor to array that can be multiplied with matrix
+    scale_factor_not_dh_array = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) & ~(
+    (n.loads.carrier.str.contains("urban central heat")))].columns.str[:2].map(scale_factor_not_dh).values
+    scale_factor_dh_array = n.loads_t.p_set.loc[:, n.loads.carrier == "urban central heat"].columns.str[:2].map(
+        scale_factor_dh).values
+
+    # scale demands
+
+    n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                            ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh_array
+    n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh_array
+
+    print("district heating share is scaled up by; ", scale_factor_dh)
+
+def calculate_clever_dh_share(clever_dict, year):
+    """
+    calculates the dh share of clever heating demand data.
+    @param clever_dict: input dictionary of CLEVER data set
+    @param year: investment year
+    @return: dh share per country
+
+    Note:   while residential total heating demand can be derived from space and water heating demands,
+            the same can not be done for services subsector. The approach here is to subtract non-heating
+            electricity demand from total energy demand to yield total heating demand. non-heating electricity
+            demand is approximated by applying the same fraction of heating/non-heating electricity demand as for
+            residential subsector.
+    """
     # calculate DH share from network heat relative to total heat demand for all modelled countries
     countries = snakemake.config["countries"]
     # total DH demand from residential and services
@@ -3599,26 +3639,7 @@ def scale_district_heating_dem(n, year):
     # calculate DH share as total DH demand divided by total heating demand services and residential
     dh_share = clever_dh_total / (clever_heat_services + clever_heat_residential)
 
-    # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
-
-    # TODO: resolve regionally
-    # get scenario share and pes demands
-    share = dh_share.mean()
-    heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
-    heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
-                                             ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
-    heat_dh_total = share * heat_total
-
-    # calculate scaling factors
-    scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
-    scale_factor_dh = heat_dh_total / n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"].sum().sum()
-
-    # scale demands
-    n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
-                            ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh
-    n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh
-
-    print("district heating share is scaled up by; ", scale_factor_dh)
+    return dh_share
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
