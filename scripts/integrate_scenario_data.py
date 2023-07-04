@@ -196,35 +196,73 @@ def scale_district_heating_dem(n, dh_share, year):
     print("district heating share is scaled up by; ", scale_factor_dh)
 
 
-def build_sce_capacities(input_path, sheet_name, output_path):
+def build_sce_capacities(input_path_cap, input_path_h2, output_path):
 
     carrier_mapping = {'wind onshore': 'onwind',
                        'onshore wind_stand alone': 'onwind',
                        'wind offshore': 'offwind',
                        'offshore wind_stand alone': 'offwind',
                        'solar_stand alone': 'solar'}
-    # {'|'.join(['Beer', 'Alcohol', 'Beverage', 'Drink']): 'Drink'}
-    eu27_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK|UK'  #'CY','MT'
 
-    df = pd.read_excel(input_path, sheet_name)
+    eu28_str = 'AT|BE|BG|CZ|DE|DK|EE|ES|FI|FR|GR|HR|HU|IE|IT|LT|LU|LV|NL|PL|PT|RO|SE|SI|SK|UK'  # 'CY','MT'
 
-    df_sup = df.query(
+    # PPL Capacities
+
+    sheet_name = "Capacity & Dispatch"
+    df = pd.read_excel(input_path_cap, sheet_name)
+
+    df = df.query(
         '''
         `Scenario` == 'Distributed Energy' & \
         `Parameter` == 'Capacity (MW)' & \
-        `Fuel` != ['Other RES', 'Other Non RES'] & \
         `Climate Year` == 'CY 2009'
         ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
-        .rename(columns={"Fuel": "carrier"}) \
-        .replace({'carrier': carrier_mapping})
+        .rename(columns={"Fuel": "carrier"})
 
     # add country column
-    df_sup = df_sup[df_sup.Node.str.contains(eu27_str)]
-    df_sup["country"] = df_sup.Node.str[:2]
-    df_sup["country"] = df_sup["country"].replace({'UK': "GB"})
+    df = df[df.Node.str.contains(eu28_str)]
+    df["country"] = df.Node.str[:2]
+    df["country"] = df["country"].replace({'UK': "GB"})
 
-    df_agg_caps = pd.pivot_table(df_sup, values='Value', index=['country', 'carrier'],
-                                 columns=['Year'], aggfunc=np.sum)
+    df_sup = df.query(
+        '''
+        `carrier` != ['other res', 'other non res']
+        ''').replace({'carrier': carrier_mapping})
+
+    df_agg_ppl_caps = pd.pivot_table(df_sup, values='Value', index=['country', 'carrier'],
+                                     columns=['Year'], aggfunc=np.sum)
+
+    # Electrolyser Capacity
+
+    df_ele_res = df[df["Node/Line"].str.contains("H2R4")]
+
+    sheet_name = "H2 Capacity"
+    df = pd.read_excel(input_path_h2, sheet_name)
+
+    df = df.query(
+        f'''
+        `Scenario` == 'Distributed Energy' & \
+        `Parameter` == 'Capacity (MW)' & \
+        `Fuel` == 'Electrolyser' & \
+        `Climate Year` == '2009-01-01'
+        ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
+        .rename(columns={"Fuel": "carrier", "Node 1": "Node"})
+
+    # add country column
+    df = df[df.Node.str.contains(eu28_str)]
+    df["country"] = df.Node.str[:2]
+    df["country"] = df["country"].replace({'UK': "GB"})
+    df_ele_mar = df
+
+    # concat market/hybrid RES + dedicated PES electrolyser caps
+    df_sup_ele = pd.concat([df_ele_res, df_ele_mar])
+    df_sup_ele["carrier"] = "electrolyser"
+
+    df_agg_ele_caps = pd.pivot_table(df_sup_ele, values='Value', index=['country', 'carrier'],
+                                     columns=['Year'], aggfunc=np.sum)
+
+    # merge ppl caps and electrolyser caps
+    df_agg_caps = pd.concat([df_agg_ppl_caps, df_agg_ele_caps]).sort_index()
 
     df_agg_caps.to_csv(output_path, index=True)
 

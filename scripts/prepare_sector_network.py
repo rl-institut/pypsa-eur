@@ -3641,12 +3641,12 @@ if __name__ == "__main__":
     if options["allam_cycle"]:
         add_allam(n, costs)
 
-    input_path = snakemake.input.tyndp_supply
-    sheet_name = "Capacity & Dispatch"
+    input_path_cap = snakemake.input.tyndp_supply
+    input_path_h2 = snakemake.input.tyndp_hydrogen
     output_path = snakemake.config["electricity"]["agg_p_nom_limits"]
 
     # creates csv with installed capacities per target year aggregated to country level
-    build_sce_capacities(input_path, sheet_name, output_path)
+    build_sce_capacities(input_path_cap, input_path_h2, output_path)
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)

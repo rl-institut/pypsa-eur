@@ -680,6 +680,7 @@ rule prepare_sector_network:
         + "pop_weighted_energy_totals_s{simpl}_{clusters}.csv",
         tyndp_demand = "data/scenario/tyndp_de/220228_Updated_Energy_Demand.xlsx",
         tyndp_supply= "data/scenario/tyndp_de/220310_Updated_Electricity_Modelling_Results.xlsx",
+        tyndp_hydrogen= "data/scenario/tyndp_de/220310_Updated_Hydrogen_Data.xlsx",
         tyndp_dh_share= "data/scenario/tyndp_de/district_heating_share.csv",
         shipping_demand=RESOURCES + "shipping_demand_s{simpl}_{clusters}.csv",
         transport_demand=RESOURCES + "transport_demand_s{simpl}_{clusters}.csv",
