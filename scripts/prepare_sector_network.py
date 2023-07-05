@@ -3609,8 +3609,10 @@ def scale_district_heating_dem(n, year):
 def calculate_clever_dh_share(clever_dict, year):
     """
     calculates the dh share of clever heating demand data.
+    paramters:
     @param clever_dict: input dictionary of CLEVER data set
     @param year: investment year
+    return:
     @return: dh share per country
 
     Note:   while residential total heating demand can be derived from space and water heating demands,
@@ -3640,6 +3642,53 @@ def calculate_clever_dh_share(clever_dict, year):
     dh_share = clever_dh_total / (clever_heat_services + clever_heat_residential)
 
     return dh_share
+
+def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
+    """
+    builds scenario installed electricity production capacities and saves as csv
+
+    parameter:
+    @param input_path_cap: path to capacity/production files
+    @param output_path: path and name of output file
+    @param indicator: whether capacity or production is build
+    return:
+    NONE
+    """
+
+    # carriers to import
+    if indicator == "capacity":
+        carriers = ["pv", "onwind", "offwind", "hydro"] #, "marinepower", "gth_csp"]
+    elif indicator == "production":
+        carriers = ["nuclear", "oil", "gas", "coal_lignite", "electrolyser"]
+
+    # countries modelled and chosen years
+    countries = snakemake.config["countries"]
+    years = ["2030", "2040", "2050"]
+    # import capacities in dictionary
+    df_caps = {carr: pd.read_csv(input_path_cap + f"/clever_supply_{indicator}_{carr}.csv",
+                                    decimal=',', delimiter=';', index_col=0) \
+                            .fillna(0.0) \
+                            .rename(index={'EL': 'GR', 'UK': 'GB'}) \
+                            .loc[countries, years] for carr in carriers
+               }
+
+    # add country and carrier columns
+    for carr in carriers:
+        df_caps[carr] *= 1e3 # conversion from GW to MW or TWH to GWh respectively
+        df_caps[carr]["country"] = df_caps[carr].index.str[:2]
+        df_caps[carr]["carrier"] = carr
+        if carr == "coal_lignite":
+            df_caps[carr]["carrier"] = "coal & lignite"
+
+    # append dataframes in dict to each other
+    df = pd.concat(df_caps, axis=0)
+    # set multiindex as country and carrier and sort by countries
+    df.set_index(["country","carrier"], inplace=True)
+    df = df.sort_index(level=[0])
+    df.index.names = ["country","carrier"]
+
+    # save to csv in stated output path and file name
+    df.to_csv(f"../{output_path}", index=True)
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
@@ -3780,6 +3829,15 @@ if __name__ == "__main__":
 
     if options["allam_cycle"]:
         add_allam(n, costs)
+
+    input_path_clever = snakemake.input.clever_supply_files
+    output_path_cap = snakemake.config["electricity"]["agg_p_nom_limits"]
+    output_path_prod = "data/agg_gen_sce.csv"
+
+    # creates csv with installed capacities in MW per target year aggregated to country level
+    build_sce_cap_prod(input_path_clever, output_path_cap, "capacity")
+    # creates csv with production amount in GWh per target year aggregated to country level
+    build_sce_cap_prod(input_path_clever, output_path_prod, "production")
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)
