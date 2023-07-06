@@ -611,6 +611,8 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
                   "oil": "oil",
                   "gas": "gas",}
 
+    pop_layout = pd.read_csv(pop_path, index_col=0)
+
     # get scenario assumption for base year
     agg_p_nom_sce = pd.read_csv(snakemake.config["electricity"]["agg_p_nom_limits"], index_col=[0])
     agg_p_nom_base = agg_p_nom_sce[["carrier", str(base_year)]]
@@ -620,7 +622,7 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
                                                         snakemake.input.regions_onshore)
 
     # get installed capacities per carrier
-    for carrier in ["lignite", "coal", "nuclear", "oil"]:
+    for carrier in ["nuclear", "lignite", "coal", "oil"]:
 
         if carrier in {"lignite", "coal"}:
             carrier_grp = "coal|lignite"
@@ -628,18 +630,26 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
         else:
             ppl_p_nom_reg = ppls_in_regions[ppls_in_regions.carrier.str.contains(carrier)]
 
+        p_nom_sce_nat = agg_p_nom_base[agg_p_nom_base.carrier == sce_carrier[carrier]][str(base_year)]
+
+        # identify missing entries
+        missing_cty = np.setdiff1d(p_nom_sce_nat.dropna().index.values, ppl_p_nom_reg.cty.unique())
+        if len(missing_cty) > 0:
+            missing_rows = pop_layout[pop_layout.ct.str.contains('|'.join(missing_cty))][["ct", "fraction"]].rename(columns={"ct":"cty"})
+            missing_rows["carrier"], missing_rows["p_nom"] = carrier, 0
+
         # derive installed fraction per region
-        ppl_p_nom_reg['fraction'] = ppl_p_nom_reg.groupby("cty").transform(lambda x: x / x.sum())
-        ppl_p_nom_reg = ppl_p_nom_reg[ppl_p_nom_reg.carrier == carrier][["p_nom", "cty", "fraction"]]
+        ppl_p_nom_reg['fraction'] = ppl_p_nom_reg.groupby("cty")["p_nom"].transform(lambda x: x / x.sum())
+        ppl_p_nom_reg = ppl_p_nom_reg[ppl_p_nom_reg.carrier == carrier]
+        # concat
+        if len(missing_cty) > 0:
+            ppl_p_nom_reg = pd.concat([ppl_p_nom_reg, missing_rows], axis=0)
 
         # join with scenario's installed capacities on national level to get regional values
-        p_nom_sce_nat = agg_p_nom_base[agg_p_nom_base.carrier == sce_carrier[carrier]][str(base_year)]
-        conv_p_nom_sce = ppl_p_nom_reg.cty.map(p_nom_sce_nat).mul(ppl_p_nom_reg.fraction).dropna()
-
+        conv_p_nom_sce = ppl_p_nom_reg.cty.map(p_nom_sce_nat).mul(ppl_p_nom_reg.fraction).fillna(0)
         # remove pypsa-eur assumptions
         n.links = n.links[(n.links.carrier!=carrier) |
                           (n.links.index.str.contains("EU"))]
-
         # add sce assumptions for installed capacities per region
         n.madd("Link",
                conv_p_nom_sce.index,
@@ -648,11 +658,15 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
                bus1=conv_p_nom_sce.index,
                bus2="co2 atmosphere",
                carrier=carrier,
+               build_year=base_year,
+               lifetime=100,
                marginal_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'VOM'], #NB: VOM is per MWel
                capital_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'fixed'], #NB: fixed cost is per MWel
                p_nom=conv_p_nom_sce/costs.at[carrier,'efficiency'],
                efficiency=costs.at[carrier,'efficiency'],
-               efficiency2=costs.at[carrier,'CO2 intensity'])
+               efficiency2=costs.at[carrier,'CO2 intensity'],
+               tags="sce")
+
 
 # %%
 if __name__ == "__main__":

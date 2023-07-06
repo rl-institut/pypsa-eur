@@ -575,7 +575,7 @@ def _set_countries_and_substations(n, config, country_shapes, offshore_shapes):
             )
             assert (
                 not df.empty
-            ), "No buses with defined country within 200km of bus `{}`".format(b)
+            ), "No buses with defined country within 300km of bus `{}`".format(b)
             n.buses.at[b, "country"] = df.loc[df.pathlength.idxmin(), "country"]
 
         logger.warning(
