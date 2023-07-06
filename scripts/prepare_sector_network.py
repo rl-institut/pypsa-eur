@@ -3659,7 +3659,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     if indicator == "capacity":
         carriers = ["pv", "onwind", "offwind", "hydro"] #, "marinepower", "gth_csp"]
     elif indicator == "production":
-        carriers = ["nuclear", "oil", "gas", "coal_lignite", "electrolyser"]
+        carriers = ["nuclear", "oil", "gas", "coal_lignite", "electrolyser", "hydro"]
 
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
