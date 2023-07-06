@@ -242,25 +242,33 @@ def add_slack_variables(n):
     # Define variables
     for c, attr in lookup.query("nominal").index:
         def_nominal_variables(n, c, attr)
-
-    n.model.add_constraints(
-        n.model["Generator-p_nom_slack_min_1"] >= 0, name="Gen_p_nom_slack_min_1"
-    )
-    n.model.add_constraints(
-        n.model["Generator-p_nom_slack_min_2"] >= 0, name="Gen_p_nom_slack_min_2"
-    )
-    n.model.add_constraints(
-        n.model["Link-p_nom_slack_min_1"] >= 0, name="Link_p_nom_slack_min_1"
-    )
-    n.model.add_constraints(
-        n.model["Link-p_nom_slack_min_2"] >= 0, name="Link_p_nom_slack_min_2"
-    )
-    n.model.add_constraints(
-        n.model["Link-p_slack_min_1"] >= 0, name="Link_p_slack_min_1"
-    )
-    n.model.add_constraints(
-        n.model["Link-p_slack_min_2"] >= 0, name="Link_p_slack_min_2"
-    )
+        n.model.add_constraints(
+            n.model[f"{c}-{attr}_slack_min_1"] >= 0, name=f"{c}-{attr}_slack_min_1"
+        )
+    # n.model.add_constraints(
+    #     n.model["Generator-p_nom_slack_min_1"] >= 0, name="Gen_p_nom_slack_min_1"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Generator-p_nom_slack_min_2"] >= 0, name="Gen_p_nom_slack_min_2"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Link-p_nom_slack_min_1"] >= 0, name="Link_p_nom_slack_min_1"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Link-p_nom_slack_min_2"] >= 0, name="Link_p_nom_slack_min_2"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Link-p_slack_min_1"] >= 0, name="Link_p_slack_min_1"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Link-p_slack_min_2"] >= 0, name="Link_p_slack_min_2"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Generator-p_slack_min_1"] >= 0, name="Link_p_slack_min_1"
+    # )
+    # n.model.add_constraints(
+    #     n.model["Generator-p_slack_min_2"] >= 0, name="Link_p_slack_min_2"
+    # )
 
 
 def add_CCL_constraints(n, config):
@@ -386,10 +394,9 @@ def add_gen_constraints(n, config):
     minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
 
     logger.info("Adding generation constraints per carrier and country")
-    args = [
-        ["Link", "p", "p_slack_min_1", "p_slack_min_2",
-         "bus1", "carrier"]
-        ]
+    args = [["Generator", "p", "p_slack_min_1", "p_slack_min_2", "bus", "carrier"],
+            ["Link", "p", "p_slack_min_1", "p_slack_min_2", "bus1", "carrier"]
+            ]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
@@ -404,22 +411,39 @@ def add_gen_constraints(n, config):
         slack_min_1 = n.model[f"{c}-{attr2}"]
         slack_min_2 = n.model[f"{c}-{attr3}"]
 
-        n.links['p_slack_min_1_opt'] = np.nan
-        n.links['p_slack_min_2_opt'] = np.nan
-        gens = n.links.rename_axis(
-            index="Link")
-        gens["carrier"] = gens.carrier.replace(carrier_grouper)
-        grouper = [gens.bus1.map(n.buses.country), gens.carrier]
-        grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
-                               dims=["Link"])
-        lhs = p.groupby(grouper).sum().rename(bus1="country")
-        lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
-        lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
-        lhs = lhs.sum(dims="snapshot")
+        if c == "Generator":
+            n.generators['p_slack_min_1_opt'] = np.nan
+            n.generators['p_slack_min_2_opt'] = np.nan
+            gens = n.generators.query("p_nom_extendable").rename_axis(
+                index="Generator")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            gens.bus = [bus.replace(" low voltage", "") for bus in gens.bus]
 
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["Generator"])
+            lhs = p.groupby(grouper).sum().rename(bus="country")
+
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
+        else:
+            n.links['p_slack_min_1_opt'] = np.nan
+            n.links['p_slack_min_2_opt'] = np.nan
+            gens = n.links.rename_axis(
+                index="Link")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            grouper = [gens.bus1.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["Link"])
+            lhs = p.groupby(grouper).sum().rename(bus1="country")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
+
+        lhs = lhs.sum(dims="snapshot")
         index = minimum.indexes["group"].intersection(lhs.indexes["group"])
         expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
                 lhs_slack_min_2.sel(group=index))
+        print(expr)
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
