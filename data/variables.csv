@@ -5,3 +5,5 @@ Link,p_nom_slack_min_1,False,True,False,True
 Link,p_nom_slack_min_2,False,True,False,True
 Link,p_slack_min_1,False,True,False,True
 Link,p_slack_min_2,False,True,False,True
+Generator,p_slack_min_1,False,True,False,True
+Generator,p_slack_min_2,False,True,False,True

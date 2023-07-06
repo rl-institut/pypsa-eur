@@ -243,32 +243,8 @@ def add_slack_variables(n):
     for c, attr in lookup.query("nominal").index:
         def_nominal_variables(n, c, attr)
         n.model.add_constraints(
-            n.model[f"{c}-{attr}_slack_min_1"] >= 0, name=f"{c}-{attr}_slack_min_1"
+            n.model[f"{c}-{attr}"] >= 0, name=f"{c}_{attr}"
         )
-    # n.model.add_constraints(
-    #     n.model["Generator-p_nom_slack_min_1"] >= 0, name="Gen_p_nom_slack_min_1"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Generator-p_nom_slack_min_2"] >= 0, name="Gen_p_nom_slack_min_2"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Link-p_nom_slack_min_1"] >= 0, name="Link_p_nom_slack_min_1"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Link-p_nom_slack_min_2"] >= 0, name="Link_p_nom_slack_min_2"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Link-p_slack_min_1"] >= 0, name="Link_p_slack_min_1"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Link-p_slack_min_2"] >= 0, name="Link_p_slack_min_2"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Generator-p_slack_min_1"] >= 0, name="Link_p_slack_min_1"
-    # )
-    # n.model.add_constraints(
-    #     n.model["Generator-p_slack_min_2"] >= 0, name="Link_p_slack_min_2"
-    # )
 
 
 def add_CCL_constraints(n, config):
@@ -451,6 +427,7 @@ def add_gen_constraints(n, config):
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_e_min"
         )
+    print(n.model.constraints["agg_e_min"])
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
