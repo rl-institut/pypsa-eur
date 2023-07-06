@@ -97,7 +97,8 @@ electricity:
   gaslimit: false # global gas usage limit of X MWh_th
   co2limit: 7.75e+7 # 0.05 * 3.1e9*0.5
   co2base: 1.487e+9
-  agg_p_nom_limits: ../data/agg_p_nom_sce.csv
+  agg_p_nom_limits: data/agg_p_nom_sce.csv
+  agg_gen_limits: data/agg_gen_sce.csv
 
   operational_reserve: # like https://genxproject.github.io/GenX/dev/core/#Reserves
     activate: false
@@ -258,7 +259,7 @@ renewable:
 
 conventional:
   nuclear:
-    p_max_pu: "../data/nuclear_p_max_pu.csv" # float of file name
+    p_max_pu: "data/nuclear_p_max_pu.csv" # float of file name
 
 lines:
   types:
