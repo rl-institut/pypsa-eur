@@ -101,7 +101,6 @@ electricity:
 <<<<<<< HEAD
 =======
   agg_gen_limits: data/agg_gen_sce.csv
->>>>>>> 16fd285b44fbcab969d1caf1aed54a4501338695
 
   operational_reserve: # like https://genxproject.github.io/GenX/dev/core/#Reserves
     activate: false
