@@ -273,7 +273,7 @@ def add_CCL_constraints(n, config):
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro"}
+                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}
     exprs = []
 
     for arg in args:
@@ -302,7 +302,7 @@ def add_CCL_constraints(n, config):
             gens = n.links.query("p_nom_extendable").rename_axis(
                 index="Link-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
-
+            gens.bus1 = gens.bus1.str.replace(r' H2', '')
             grouper = [gens.bus1.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
@@ -316,6 +316,7 @@ def add_CCL_constraints(n, config):
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min"
@@ -696,7 +697,7 @@ def solve_network(n, config, opts="", **kwargs):
 
     # set p_nom_ext to True
     n.generators = n.generators.assign(p_nom_extendable=True)
-    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear']), 'p_nom_extendable'] = True
+    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear','H2 electrolysis']), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
