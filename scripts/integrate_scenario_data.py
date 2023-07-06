@@ -196,7 +196,7 @@ def scale_district_heating_dem(n, dh_share, year):
     print("district heating share is scaled up by; ", scale_factor_dh)
 
 
-def build_sce_capacities(input_path_cap, input_path_h2, output_path):
+def build_sce_capacities(input_path_cap, input_path_h2, output_path_cap, output_path_gen):
 
     carrier_mapping = {'wind onshore': 'onwind',
                        'onshore wind_stand alone': 'onwind',
@@ -214,22 +214,32 @@ def build_sce_capacities(input_path_cap, input_path_h2, output_path):
     df = df.query(
         '''
         `Scenario` == 'Distributed Energy' & \
-        `Parameter` == 'Capacity (MW)' & \
         `Climate Year` == 'CY 2009'
         ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
-        .rename(columns={"Fuel": "carrier"})
+        .rename(columns={"Fuel": "carrier"}) \
+        .replace({'carrier': carrier_mapping})
 
     # add country column
     df = df[df.Node.str.contains(eu28_str)]
     df["country"] = df.Node.str[:2]
     df["country"] = df["country"].replace({'UK': "GB"})
 
-    df_sup = df.query(
+    df_cap = df.query(
         '''
+        `Parameter` == 'Capacity (MW)' & \
         `carrier` != ['other res', 'other non res']
-        ''').replace({'carrier': carrier_mapping})
+        ''')
 
-    df_agg_ppl_caps = pd.pivot_table(df_sup, values='Value', index=['country', 'carrier'],
+    df_agg_ppl_caps = pd.pivot_table(df_cap, values='Value', index=['country', 'carrier'],
+                                     columns=['Year'], aggfunc=np.sum)
+
+    df_gen = df.query(
+        '''
+        `Parameter` == 'Dispatch (GWh)' & \
+        `carrier` == ['hydro', 'gas', 'oil', 'coal & lignite', 'nuclear'] 
+        ''') # electrolyser
+
+    df_agg_ppl_gens = pd.pivot_table(df_gen, values='Value', index=['country', 'carrier'],
                                      columns=['Year'], aggfunc=np.sum)
 
     # Electrolyser Capacity
@@ -264,7 +274,8 @@ def build_sce_capacities(input_path_cap, input_path_h2, output_path):
     # merge ppl caps and electrolyser caps
     df_agg_caps = pd.concat([df_agg_ppl_caps, df_agg_ele_caps]).sort_index()
 
-    df_agg_caps.to_csv(output_path, index=True)
+    df_agg_caps.to_csv(output_path_cap, index=True)
+    df_agg_ppl_gens.to_csv(output_path_gen, index=True)
 
 
 def spatial_join_existing_powerplants(ppl_path, geo_path):
