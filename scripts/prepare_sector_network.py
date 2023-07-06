@@ -3663,7 +3663,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
-    years = ["2030", "2040", "2050"]
+    years = map(str, snakemake.config["scenario"]["planning_horizons"])
     # import capacities in dictionary
     df_caps = {carr: pd.read_csv(input_path_cap + f"/clever_supply_{indicator}_{carr}.csv",
                                     decimal=',', delimiter=';', index_col=0) \
@@ -3832,7 +3832,7 @@ if __name__ == "__main__":
 
     input_path_clever = snakemake.input.clever_supply_files
     output_path_cap = snakemake.config["electricity"]["agg_p_nom_limits"]
-    output_path_prod = "data/agg_gen_sce.csv"
+    output_path_prod = snakemake.config["electricity"]["agg_e_gen_limits"]
 
     # creates csv with installed capacities in MW per target year aggregated to country level
     build_sce_cap_prod(input_path_clever, output_path_cap, "capacity")
