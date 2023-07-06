@@ -1,4 +1,4 @@
-name: pypsa-eur
+name: pypsa-eur-loc
 channels:
   - bioconda
   - conda-forge
