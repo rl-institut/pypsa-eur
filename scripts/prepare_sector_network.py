@@ -3688,7 +3688,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df.index.names = ["country","carrier"]
 
     # save to csv in stated output path and file name
-    df.to_csv(f"../{output_path}", index=True)
+    df.to_csv(snakemake.config["electricity"]["agg_p_nom_limits"], index=True)
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
