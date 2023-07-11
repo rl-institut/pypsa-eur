@@ -3235,13 +3235,13 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "prepare_sector_network",
-            configfiles="test/config.overnight.yaml",
+            configfiles="config/config.yaml",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="30",
+            ll="v1.0",
+            sector_opts="25H-T-H-B-I-A-dist1",
+            planning_horizons="2050",
         )
 
     logging.basicConfig(level=snakemake.config["logging"]["level"])
