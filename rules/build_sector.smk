@@ -678,6 +678,8 @@ rule prepare_sector_network:
         eurostat=input_eurostat,
         pop_weighted_energy_totals=RESOURCES
         + "pop_weighted_energy_totals_s{simpl}_{clusters}.csv",
+        pac_demand_files="data/scenario/pac2_0/demand",
+        pac_supply_files="data/scenario/pac2_0/supply",
         shipping_demand=RESOURCES + "shipping_demand_s{simpl}_{clusters}.csv",
         transport_demand=RESOURCES + "transport_demand_s{simpl}_{clusters}.csv",
         transport_data=RESOURCES + "transport_data_s{simpl}_{clusters}.csv",
