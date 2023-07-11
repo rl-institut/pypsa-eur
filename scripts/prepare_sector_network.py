@@ -1754,8 +1754,8 @@ def add_heat(n, costs):
             # this also keeps distribution of demands between uses as in pes
             heat_demand[sector + " water"] *= scale_factor
             heat_demand[sector + " space"] *= scale_factor
-            print(f"heat scale factors for sector {sector} water : \n {scale_factor}")
-            print(f"heat scale factors for sector {sector} space : \n {scale_factor}")
+            # print(f"heat scale factors for sector {sector} water : \n {scale_factor}")
+            # print(f"heat scale factors for sector {sector} space : \n {scale_factor}")
 
         elif sector == "residential":
             for use in uses:
@@ -3604,7 +3604,7 @@ def scale_district_heating_dem(n, year):
                             ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh_array
     n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh_array
 
-    print("district heating share is scaled up by; ", scale_factor_dh)
+    # print("district heating share is scaled up by; ", scale_factor_dh)
 
 def calculate_clever_dh_share(clever_dict, year):
     """
@@ -3663,7 +3663,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
-    years = map(str, snakemake.config["scenario"]["planning_horizons"])
+    years = ["2030", "2040", "2050"] # map(str, snakemake.config["scenario"]["planning_horizons"])
     # import capacities in dictionary
     df_caps = {carr: pd.read_csv(input_path_cap + f"/clever_supply_{indicator}_{carr}.csv",
                                     decimal=',', delimiter=';', index_col=0) \
@@ -3688,7 +3688,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df.index.names = ["country","carrier"]
 
     # save to csv in stated output path and file name
-    df.to_csv(snakemake.config["electricity"]["agg_p_nom_limits"], index=True)
+    df.to_csv(output_path, index=True)
 
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
