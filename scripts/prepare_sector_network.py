@@ -3228,6 +3228,63 @@ def set_temporal_aggregation(n, opts, solver_name):
             break
     return n
 
+def get_pac_demand_sector(sector: str) -> pd.DataFrame:
+    """
+    gets pac demand for sector (building, transport, industry)
+
+    paramter:
+    @param sector: either 'industry', 'building' or 'transport'
+    @return: pandas DataFrame with multiindex of country and subsectors
+    """
+    countries = snakemake.config["countries"]
+    years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
+
+    # import pac demand data; depending on sector filenames differ and are appended to each other for each sector
+    if sector == "buildings":
+        sector_dict = {ctry: pd.concat((pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_enduse.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
+                          }
+    elif sector == "industry":
+        sector_dict = {ctry: pd.concat((pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_sector.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
+                          }
+    elif sector == "transport":
+        sector_dict = {ctry: pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years] for ctry in countries
+                          }
+    else:
+        raise Exception("Invalid sector information. Please enter either 'buildings', \
+                    'industry' or 'transport'.")
+
+    # exract country and subsector information in separate column to use as index later
+    for ctry in countries:
+        sector_dict[ctry]["country"] = ctry
+        sector_dict[ctry]["subsector"] = sector_dict[ctry].index.values
+
+    # append dataframes in dict to each other
+    df = pd.concat(sector_dict, axis=0)
+    # set multiindex as country and subsector. Thus, later it can be filtered by subsector
+    df.set_index(["country", "subsector"], inplace=True)
+
+    return df
+
+def get_pac_demand_subsector(df: pd.DataFrame, subsector: str) -> pd.DataFrame:
+    """
+    filters the full sector dataframe to dataframe with subsector
+
+    parameter:
+    @param df: pandas DataFrame with all of sector demand data
+    @param subsector: string of subsector that is to be filtered by
+    @return: pandas DataFrame with filtered subsector
+    """
+    return df.filter(like=subsector, axis=0).droplevel(1)
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -3270,6 +3327,10 @@ if __name__ == "__main__":
     pop_weighted_energy_totals = (
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
+
+    # import all pac scenario demand as dictionary of sectors
+    sectors = ["buildings","industry","transport"]
+    pac_dict = {sector: get_pac_demand_sector(sector) for sector in sectors}
 
     patch_electricity_network(n)
 
