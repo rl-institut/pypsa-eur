@@ -2345,22 +2345,23 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
+    # get pac scenario industry biomass demand
+    pac_bio_nat = get_pac_demand_subsector(pac_dict["industry"],"Solid biofuel")
+
     if options.get("biomass_spatial", options["biomass_transport"]):
-        p_set = (
-            industrial_demand.loc[spatial.biomass.locations, "solid biomass"].rename(
-                index=lambda x: x + " solid biomass for industry"
-            )
-            / nhours
-        )
+        # distribute PAC scenario biomass demand
+        pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        pac_bio_reg = distribute_sce_demand_by_pes_layout(pac_bio_nat, pes_bio_reg, pop_layout)
+        p_set_bio = pac_bio_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        p_set = industrial_demand["solid biomass"].sum() / nhours
+        p_set_bio = pac_bio_nat.sum() / nhours
 
     n.madd(
         "Load",
         spatial.biomass.industry,
         bus=spatial.biomass.industry,
         carrier="solid biomass for industry",
-        p_set=p_set,
+        p_set=p_set_bio,
     )
 
     n.madd(
@@ -3285,6 +3286,22 @@ def get_pac_demand_subsector(df: pd.DataFrame, subsector: str) -> pd.DataFrame:
     @return: pandas DataFrame with filtered subsector
     """
     return df.filter(like=subsector, axis=0).droplevel(1)
+
+def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layout):
+
+    # get embedded country codes
+    pes_demand_reg['ctry'] = pes_demand_reg.index.str[:2]
+    # calculate fractions for cluster within a country
+    pes_demand_reg['fraction'] = pes_demand_reg.groupby("ctry").transform(lambda x: x / x.sum())
+
+    # in case pes demand is zero, but sce demand not - weight based on population
+    if pes_demand_reg.fraction.isnull().any():
+        pes_demand_reg['fraction'] = pes_demand_reg.fraction.fillna(pop_layout.fraction)
+
+    # mapping scenario demand to cluster and multiplying by fraction to distribute scenario demand accordingly
+    sce_demand_reg = pes_demand_reg.ctry.map(sce_demand_nat).mul(pes_demand_reg.fraction)
+
+    return sce_demand_reg
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
