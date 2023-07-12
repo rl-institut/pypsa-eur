@@ -229,8 +229,11 @@ def def_nominal_variables(n, c, attr):
     """
     if attr.startswith("p_nom"):
         ext_i = n.get_extendable_i(c)
-    else:
+    elif c=="Generator":
         idx = n.df(c)[lambda ds: ds["p_nom_extendable"]].index
+        ext_i = idx.rename(f"{c}")
+    else:
+        idx = n.df(c).index
         ext_i = idx.rename(f"{c}")
 
     if ext_i.empty:
