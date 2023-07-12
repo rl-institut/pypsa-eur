@@ -2,13 +2,15 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
+sce_name = 'Global Ambition'
+
 def import_sce_data(file_path, sheet_name):
 
     df = pd.read_excel(file_path, sheet_name=sheet_name)
 
     df = df.query(
-        '''
-        `Scenario` == 'Distributed Energy' & \
+        f'''
+        `Scenario` == '{sce_name}' & \
         `Output_type` == 'Energy_demand' & \
         `Country` != ['CY','MT'] & \
         `Sector` == ['Residential','Tertiary','Agriculture','Transport','Industry']
@@ -182,7 +184,7 @@ def scale_district_heating_dem(n, dh_share, year):
     heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
     heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
                                              ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
-    heat_dh_total = share.loc[float(year), 'Distributed Energy'] * heat_total
+    heat_dh_total = share.loc[float(year), sce_name] * heat_total
 
     # calculate scaling factors
     scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
@@ -212,8 +214,8 @@ def build_sce_capacities(input_path_cap, input_path_h2, output_path_cap, output_
     df = pd.read_excel(input_path_cap, sheet_name)
 
     df = df.query(
-        '''
-        `Scenario` == 'Distributed Energy' & \
+        f'''
+        `Scenario` == '{sce_name}' & \
         `Climate Year` == 'CY 2009'
         ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
         .rename(columns={"Fuel": "carrier"}) \
@@ -251,7 +253,7 @@ def build_sce_capacities(input_path_cap, input_path_h2, output_path_cap, output_
 
     df = df.query(
         f'''
-        `Scenario` == 'Distributed Energy' & \
+        `Scenario` == '{sce_name}' & \
         `Parameter` == 'Capacity (MW)' & \
         `Fuel` == 'Electrolyser' & \
         `Climate Year` == '2009-01-01'

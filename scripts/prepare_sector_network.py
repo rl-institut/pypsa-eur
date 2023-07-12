@@ -3541,7 +3541,7 @@ if __name__ == "__main__":
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
 
-    # import total tyndp_de scenario data as df
+    # import total tyndp scenario data as df
     file_path = snakemake.input.tyndp_demand
     sheet_name = 'OUTPUT_ALL'
     df_sce_data = import_sce_data(file_path, sheet_name)

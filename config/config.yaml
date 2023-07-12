@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "tyndp_de" # use this to keep track of runs with different settings
+  name: "tyndp_ga" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -82,15 +82,15 @@ enable:
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
 # this is also over-ridden if cb is set in sector_opts
-# derived from /data/scenario/tyndp_de/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 39
+# derived from /data/scenario/tyndp/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 39
 co2_budget:
   2020: 0.7439
-  2025: 0.6555
-  2030: 0.4501
-  2035: 0.3243
-  2040: 0.1988
-  2045: 0.0995
-  2050: 0.0000
+  2025: 0.652
+  2030: 0.4518
+  2035: 0.2899
+  2040: 0.128
+  2045: 0.0015
+  2050: -0.1249
 
 electricity:
   voltages: [220., 300., 380.]
