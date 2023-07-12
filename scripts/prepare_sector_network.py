@@ -36,7 +36,7 @@ from integrate_scenario_data import import_sce_data, get_sce_data_by_sector, \
                                     get_agricultural_demand_by_carrier, \
                                     distribute_sce_demand_by_pes_layout, \
                                     scale_district_heating_dem, \
-                                    build_sce_capacities
+                                    build_sce_caps_and_prods
 
 logger = logging.getLogger(__name__)
 
@@ -3643,12 +3643,10 @@ if __name__ == "__main__":
 
     input_path_cap = snakemake.input.tyndp_supply
     input_path_h2 = snakemake.input.tyndp_hydrogen
-    output_path_cap = snakemake.input.agg_p_nom_limits
-    output_path_gen = snakemake.input.agg_e_gen_limits
+    output_path = snakemake.input.resources_dir
 
     # creates csv with installed capacities per target year aggregated to country level
-    build_sce_capacities(input_path_cap, input_path_h2,
-                         output_path_cap, output_path_gen)
+    build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path)
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)
