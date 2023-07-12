@@ -274,6 +274,19 @@ def build_sce_capacities(input_path_cap, input_path_h2, output_path_cap, output_
     # merge ppl caps and electrolyser caps
     df_agg_caps = pd.concat([df_agg_ppl_caps, df_agg_ele_caps]).sort_index()
 
+
+    # add NaN rows for carrier not used in country
+    carr = list(df_agg_caps.index.get_level_values("carrier").unique())
+    ctys = list(df_agg_caps.index.get_level_values("country").unique())
+    multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
+    df_agg_caps = df_agg_caps.reindex(multi_idx)
+
+    carr = list(df_agg_ppl_gens.index.get_level_values("carrier").unique())
+    ctys = list(df_agg_ppl_gens.index.get_level_values("country").unique())
+    multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
+    df_agg_ppl_gens = df_agg_ppl_gens.reindex(multi_idx)
+
+    # export
     df_agg_caps.to_csv(output_path_cap, index=True)
     df_agg_ppl_gens.to_csv(output_path_gen, index=True)
 

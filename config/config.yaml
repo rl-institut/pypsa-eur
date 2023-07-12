@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "" # use this to keep track of runs with different settings
+  name: "tyndp_de" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -25,7 +25,7 @@ scenario:
   - v1.5
   # - v1.5
   clusters:  # number of nodes in Europe, any integer between 37 (1 node per country-zone) and several hundred
-  - 77
+  - 30
   # - 128
   # - 256
   # - 512
@@ -98,7 +98,7 @@ electricity:
   co2limit: 7.75e+7 # 0.05 * 3.1e9*0.5
   co2base: 1.487e+9
   agg_p_nom_limits: data/agg_p_nom_sce.csv
-  agg_gen_limits: data/agg_gen_sce.csv
+  agg_e_gen_limits: data/agg_gen_sce.csv
 
   operational_reserve: # like https://genxproject.github.io/GenX/dev/core/#Reserves
     activate: false

@@ -3644,7 +3644,7 @@ if __name__ == "__main__":
     input_path_cap = snakemake.input.tyndp_supply
     input_path_h2 = snakemake.input.tyndp_hydrogen
     output_path_cap = snakemake.config["electricity"]["agg_p_nom_limits"]
-    output_path_gen = snakemake.config["electricity"]["agg_gen_limits"]
+    output_path_gen = snakemake.config["electricity"]["agg_e_gen_limits"]
 
     # creates csv with installed capacities per target year aggregated to country level
     build_sce_capacities(input_path_cap, input_path_h2,
