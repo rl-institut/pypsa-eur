@@ -54,6 +54,7 @@ lookup = pd.read_csv(
     index_col=["component", "variable"],
 )
 
+
 def add_land_use_constraint(n, config):
     if "m" in snakemake.wildcards.clusters:
         _add_land_use_constraint_m(n, config)
@@ -217,6 +218,7 @@ def def_nominal_variables(n, c, attr):
     """
     Initializes variables for nominal capacities for a given component and a
     given attribute.
+
     Parameters
     ----------
     n : pypsa.Network
@@ -227,8 +229,11 @@ def def_nominal_variables(n, c, attr):
     """
     if attr.startswith("p_nom"):
         ext_i = n.get_extendable_i(c)
-    else:
+    elif c=="Generator":
         idx = n.df(c)[lambda ds: ds["p_nom_extendable"]].index
+        ext_i = idx.rename(f"{c}")
+    else:
+        idx = n.df(c).index
         ext_i = idx.rename(f"{c}")
 
     if ext_i.empty:
@@ -264,7 +269,7 @@ def add_CCL_constraints(n, config):
         opts: [Co2L-CCL-24H]
     electricity:
         agg_p_nom_limits: data/agg_p_nom_sce.csv
-        agg_e_limits: data/agg_gen_sce.csv
+        agg_e_limits: data/agg_e_gen_sce.csv
     """
 
     target_year = snakemake.wildcards.planning_horizons[-4:]
@@ -286,8 +291,9 @@ def add_CCL_constraints(n, config):
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro"}#, "biomass": "biofuels"}
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "pv",
+                       "solar": "pv",
+                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
     exprs = []
 
     for arg in args:
@@ -318,7 +324,7 @@ def add_CCL_constraints(n, config):
             gens = n.links.query("p_nom_extendable").rename_axis(
                 index="Link-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
-
+            gens["bus1"] = [bus.replace(" H2", "") for bus in gens["bus1"]]
             grouper = [gens.bus1.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
@@ -332,6 +338,7 @@ def add_CCL_constraints(n, config):
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min"
@@ -343,8 +350,8 @@ def add_gen_constraints(n, config):
     Add yearly generation (country & carrier generatiom) constraint to the network.
 
     Add generation level of generators per carrier for individual countries.
-    Opts and path for agg_gen_sce.csv must be defined
-    in config.yaml. Default file is available at data/agg_gen_sce.csv.
+    Opts and path for agg_e_gen_sce.csv must be defined
+    in config.yaml. Default file is available at data/agg_e_gen_sce.csv.
 
     Parameters
     ----------
@@ -356,16 +363,20 @@ def add_gen_constraints(n, config):
     scenario:
         opts: [Co2L-CCL-24H]
     electricity:
-        agg_e_limits: data/agg_gen_sce.csv
+        agg_e_limits: data/agg_e_gen_sce.csv
     """
 
     target_year = snakemake.wildcards.planning_horizons[-4:]
+    t = n.snapshot_weightings.iloc[0, 0]
+    costs = pd.read_csv("./data/costs_" + str(target_year) + ".csv")
+    costs = costs.loc[costs.parameter == "efficiency"][["technology", "value"]].set_index("technology")
+
 
     agg_e_limits = pd.read_csv(
-        config["electricity"]["agg_gen_limits"], index_col=[0, 1]
+        config["electricity"]["agg_e_gen_limits"], index_col=[0, 1]
     )
-    agg_e_limits = (agg_e_limits[target_year]).fillna(0)
-    minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
+    agg_e_limits = (agg_e_limits[target_year]).fillna(0)*1000
+    minimum = xr.DataArray(agg_e_limits).rename(dim_0="group2")
 
     logger.info("Adding generation constraints per carrier and country")
     args = [["Generator", "p", "p_slack_min_1", "p_slack_min_2", "bus", "carrier"],
@@ -375,8 +386,10 @@ def add_gen_constraints(n, config):
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro"}#, "biomass": "biofuels"}
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "pv",
+                       "solar": "pv",
+                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}
+                       #, "biomass": "biofuels"}
     exprs = []
 
     for arg in args:
@@ -390,42 +403,62 @@ def add_gen_constraints(n, config):
             n.generators['p_slack_min_2_opt'] = np.nan
             gens = n.generators.query("p_nom_extendable").rename_axis(
                 index="Generator")
+            # add efficiencies
+            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
+            for gen in p.coords.indexes.variables.mapping["Generator"].data]
+            factor = pd.Series(data,
+            index=p.coords.indexes.variables.mapping[
+            "Generator"].data).rename_axis("Generator", axis="index")
+            p = p.sum(dims="snapshot")*factor
+
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
             gens.bus = [bus.replace(" low voltage", "") for bus in gens.bus]
 
             grouper = [gens.bus.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator"])
-            lhs = p.groupby(grouper).sum().rename(bus="country")
+            lhs = p.groupby(grouper).sum().rename(bus="country").rename(group="group2")
 
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country").rename(group="group2")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country").rename(group="group2")
         else:
             n.links['p_slack_min_1_opt'] = np.nan
             n.links['p_slack_min_2_opt'] = np.nan
             gens = n.links.rename_axis(
                 index="Link")
+            # add efficiencies
+            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
+                    for gen in p.coords.indexes.variables.mapping["Link"].data]
+            factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
+                "Link"].data).rename_axis("Link", axis="index")
+            p = p.sum(dims="snapshot") * factor
+
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            gens["bus1"] = [bus.replace(" H2", "") for bus in gens["bus1"]]
             grouper = [gens.bus1.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link"])
-            lhs = p.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
+            lhs = p.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
 
-        lhs = lhs.sum(dims="snapshot")
-        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
-                lhs_slack_min_2.sel(group=index))
-        print(expr)
+        index = minimum.indexes["group2"].intersection(lhs.indexes["group2"])
+        expr = (lhs.sel(group2=index) + lhs_slack_min_1.sel(group2=index) -
+                lhs_slack_min_2.sel(group2=index))
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
-    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+
+    index = minimum.indexes["group2"].intersection(lhs.indexes["group2"])
+    #index.names = ["country2", "carrier2"]
+    # print(lhs.sel(group2=index))
+    # print(minimum.loc[index]/t)
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) == minimum.loc[index], name="agg_e_min"
+            lhs.sel(group2=index) == minimum.loc[index]/t, name="agg_e_min", coords=index
         )
+    #print(lhs.sel(group2=index) == minimum.loc[index]/t)
     print(n.model.constraints["agg_e_min"])
+
 
 def add_EQ_constraints(n, o, scaling=1e-1):
     """
@@ -752,7 +785,6 @@ def add_slacks_to_objective(n, snapshots):
     objective.append(m.objective)
     m.objective = merge(objective)
 
-
 def extra_functionality(n, snapshots):
     """
     Collects supplementary constraints which will be passed to
@@ -807,7 +839,7 @@ def solve_network(n, config, opts="", **kwargs):
 
     # set p_nom_ext to True
     n.generators = n.generators.assign(p_nom_extendable=True)
-    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear']), 'p_nom_extendable'] = True
+    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear', "H2 Electrolysis"]), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
@@ -847,14 +879,14 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "solve_sector_network",
-            configfiles="test/config.overnight.yaml",
+            "solve_network",
+            configfiles="config/config.yaml",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="30",
+            ll="v1.0",
+            sector_opts="Co2L0-3H-T-H-B-I-A-dist1-CCL",
+            planning_horizons="2050",
         )
     configure_logging(snakemake)
     if "sector_opts" in snakemake.wildcards.keys():
