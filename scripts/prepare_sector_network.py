@@ -2346,7 +2346,7 @@ def add_industry(n, costs):
     )
 
     # get pac scenario industry biomass demand
-    pac_bio_nat = get_pac_demand_subsector(pac_dict["industry"],"Solid biofuel")
+    pac_bio_nat = get_pac_demand_subsector(pac_dict["industry"],"Solid biofuel")[str(investment_year)]
 
     if options.get("biomass_spatial", options["biomass_transport"]):
         # distribute PAC scenario biomass demand
@@ -2401,19 +2401,26 @@ def add_industry(n, costs):
         unit="MWh_LHV",
     )
 
-    gas_demand = industrial_demand.loc[nodes, "methane"] / nhours
+    # get PAC scenario industrial gas demand (natural gas + biomethane + e-fuels gas
+    pac_gas_nat = get_pac_demand_subsector(pac_dict["industry"],"Gas natural")[str(investment_year)] \
+                + get_pac_demand_subsector(pac_dict["industry"],"Biomethane")[str(investment_year)] \
+                + get_pac_demand_subsector(pac_dict["industry"],"Gas e-fuel")[str(investment_year)]
 
     if options["gas_network"]:
-        spatial_gas_demand = gas_demand.rename(index=lambda x: x + " gas for industry")
+        # distribute PAC scenario gas demand
+        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        pac_gas_reg = distribute_sce_demand_by_pes_layout(pac_gas_nat, pes_gas_nat, pop_layout)
+        # PAC industry demand is in TWh, pypsa demand in MWh
+        p_set_gas = pac_gas_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        spatial_gas_demand = gas_demand.sum()
+        p_set_gas = pac_gas_nat.sum()
 
     n.madd(
         "Load",
         spatial.gas.industry,
         bus=spatial.gas.industry,
         carrier="gas for industry",
-        p_set=spatial_gas_demand,
+        p_set=p_set_gas,
     )
 
     n.madd(
@@ -2447,13 +2454,22 @@ def add_industry(n, costs):
         lifetime=costs.at["cement capture", "lifetime"],
     )
 
+    # get PAC scenario industrial hydrogen demand
+    pac_h2_nat = get_pac_demand_subsector(pac_dict["industry"],"Gas hydrogen")[str(investment_year)]
+    pes_h2_reg = industrial_demand.loc[nodes, "hydrogen"].to_frame() / 1e6
+
+    # distribute PAC scenario industrial hydrogen demand
+    pac_h2_reg = distribute_sce_demand_by_pes_layout(pac_h2_nat, pes_h2_reg, pop_layout)
+    p_set_h2 = pac_h2_reg * 1e6 / nhours
+
+
     n.madd(
         "Load",
         nodes,
         suffix=" H2 for industry",
         bus=nodes + " H2",
         carrier="H2 for industry",
-        p_set=industrial_demand.loc[nodes, "hydrogen"] / nhours,
+        p_set=p_set_h2,
     )
 
     shipping_hydrogen_share = get(options["shipping_hydrogen_share"], investment_year)
@@ -2680,7 +2696,17 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("HVC_demand_factor", 1)
-    p_set = demand_factor * industrial_demand.loc[nodes, "naphtha"].sum() / nhours
+
+    # get PAC industrial naphtha demand ()
+    pac_nap_nat = get_pac_demand_subsector(pac_dict["industry"],"Liquid oil")[str(investment_year)] \
+                + get_pac_demand_subsector(pac_dict["industry"],"Liquid biofuel")[str(investment_year)] \
+                + get_pac_demand_subsector(pac_dict["industry"],"Liquid e-fuel")[str(investment_year)]
+    pes_nap_reg = industrial_demand.loc[nodes, "naphtha"].to_frame() / 1e6
+
+    # distribute PAC scenario industrial naphtha demand
+    pac_nap_reg = distribute_sce_demand_by_pes_layout(pac_nap_nat, pes_nap_reg, pop_layout)
+    p_set_nap = pac_nap_reg * 1e6 / nhours
+
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
 
@@ -2689,7 +2715,7 @@ def add_industry(n, costs):
         ["naphtha for industry"],
         bus=spatial.oil.nodes,
         carrier="naphtha for industry",
-        p_set=p_set,
+        p_set=p_set_nap,
     )
 
     demand_factor = options.get("aviation_demand_factor", 1)
@@ -2759,13 +2785,23 @@ def add_industry(n, costs):
         )
         n.loads_t.p_set[loads_i] *= factor
 
+    # get PAC scenario industrial electricity demand
+    pac_ele_nat = get_pac_demand_subsector(pac_dict["industry"],"Electricity")[str(investment_year)]
+    pes_ele_reg = industrial_demand.loc[nodes, "electricity"].to_frame() / 1e6
+
+    # distribute PAC electricity demand
+    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg, pop_layout)
+
+    # replace pes with PAC electricity demand
+    p_set_ele = pac_ele_reg * 1e6 / nhours
+
     n.madd(
         "Load",
         nodes,
         suffix=" industry electricity",
         bus=nodes,
         carrier="industry electricity",
-        p_set=industrial_demand.loc[nodes, "electricity"] / nhours,
+        p_set=p_set_ele,
     )
 
     n.madd(
