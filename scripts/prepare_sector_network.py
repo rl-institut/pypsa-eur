@@ -3412,6 +3412,25 @@ if __name__ == "__main__":
 
     patch_electricity_network(n)
 
+    # scale electricity time series data to PAC demand
+    # get scenarios electricity demand for buildings
+    pac_ele_buil = get_pac_demand_subsector(pac_dict["buildings"], "Electricity")[str(investment_year)]
+
+    # get scenarios electricity demand for industry
+    pac_ele_ind = get_pac_demand_subsector(pac_dict["industry"], "Electricity")[str(investment_year)]
+
+    # get regional distributed pes demand and nationally distributed PAC demand per sector
+    pac_ele_nat = pd.concat([pac_ele_buil, pac_ele_ind], axis=1).sum(axis=1)
+    pes_ele_reg = n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].sum().to_frame() / 1e6
+
+    # scale and distribute
+    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg, pop_layout)
+    scale_factor = pac_ele_reg.div(pes_ele_reg[0])
+
+    # update electricity demand to PAC data using regional scale factor
+    n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"] = \
+        n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].mul(scale_factor, axis=1)
+
     spatial = define_spatial(pop_layout.index, options)
 
     if snakemake.config["foresight"] == "myopic":
