@@ -1628,6 +1628,30 @@ def add_heat(n, costs):
 
     # NB: must add costs of central heating afterwards (EUR 400 / kWpeak, 50a, 1% FOM from Fraunhofer ISE)
 
+    # to scale heaating demand, distribution of heating demand between services and residential stay as pypsa
+    # assumptions. Thus, only total space and water heating demand can be used to calculate scale factors from PAC
+
+    # get pes total space heat demand per region
+    pes_space_heat_reg = heat_demand.sum().unstack().filter(like="space", axis=0).sum().T.to_frame()  / 1e6
+    pes_water_heat_reg = heat_demand.sum().unstack().filter(like="water", axis=0).sum().T.to_frame()  / 1e6
+    pac_space_heat_nat = get_pac_demand_subsector(pac_dict["buildings"],"Heating")[str(investment_year)] \
+                        + get_pac_demand_subsector(pac_dict["buildings"],"District heating")[str(investment_year)]
+    pac_water_heat_nat = get_pac_demand_subsector(pac_dict["buildings"], "Hotwater")[str(investment_year)]
+
+    # scale and distribute
+    pac_space_heat_reg = distribute_sce_demand_by_pes_layout(pac_space_heat_nat,
+                                                             pes_space_heat_reg, pop_layout)
+    pac_water_heat_reg = distribute_sce_demand_by_pes_layout(pac_water_heat_nat,
+                                                             pes_water_heat_reg, pop_layout)
+    scale_factor_space = pac_space_heat_reg.div(pes_space_heat_reg[0])
+    scale_factor_water = pac_water_heat_reg.div(pes_water_heat_reg[0])
+
+    # update space and water heat demand to PAC data using regional scale factors
+    heat_demand["residential space"] *= scale_factor_space
+    heat_demand["services space"] *= scale_factor_space
+    heat_demand["residential water"] *= scale_factor_water
+    heat_demand["services water"] *= scale_factor_water
+
     # exogenously reduce space heat demand
     if options["reduce_space_heat_exogenously"]:
         dE = get(options["reduce_space_heat_exogenously_factor"], investment_year)
@@ -3278,11 +3302,12 @@ def get_pac_demand_sector(sector: str) -> pd.DataFrame:
 
     # import pac demand data; depending on sector filenames differ and are appended to each other for each sector
     if sector == "buildings":
+        # for buildings in vector DH has to be dropped since DH in both and only enduse DH value is realistic
         sector_dict = {ctry: pd.concat((pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_enduse.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years].drop("District heating")), axis=0) for ctry in countries
                           }
     elif sector == "industry":
         sector_dict = {ctry: pd.concat((pd.read_csv(
