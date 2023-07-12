@@ -275,7 +275,7 @@ def add_CCL_constraints(n, config):
     target_year = snakemake.wildcards.planning_horizons[-4:]
 
     agg_p_nom_sce = pd.read_csv(
-        config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
+        snakemake.input.agg_p_nom_limits, index_col=[0, 1]
     )
     agg_p_nom_min = (agg_p_nom_sce[target_year]).fillna(0)
     minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
@@ -372,7 +372,7 @@ def add_gen_constraints(n, config):
 
 
     agg_e_limits = pd.read_csv(
-        config["electricity"]["agg_e_gen_limits"], index_col=[0, 1]
+        snakemake.input.agg_e_gen_limits, index_col=[0, 1]
     )
     agg_e_limits = (agg_e_limits[target_year]).fillna(0)*1000
     minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
