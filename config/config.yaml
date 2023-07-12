@@ -84,13 +84,22 @@ enable:
 # this is also over-ridden if cb is set in sector_opts
 # derived from /data/scenario/tyndp/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 39
 co2_budget:
-  2020: 0.7439
-  2025: 0.652
-  2030: 0.4518
-  2035: 0.2899
-  2040: 0.128
-  2045: 0.0015
-  2050: -0.1249
+  tyndp_de:
+    2020: 0.7439
+    2025: 0.6555
+    2030: 0.4501
+    2035: 0.3243
+    2040: 0.1988
+    2045: 0.0995
+    2050: 0.0000
+  tyndp_ga:
+    2020: 0.7439
+    2025: 0.652
+    2030: 0.4518
+    2035: 0.2899
+    2040: 0.128
+    2045: 0.0015
+    2050: -0.1249
 
 electricity:
   voltages: [220., 300., 380.]

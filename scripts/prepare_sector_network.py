@@ -3643,8 +3643,8 @@ if __name__ == "__main__":
 
     input_path_cap = snakemake.input.tyndp_supply
     input_path_h2 = snakemake.input.tyndp_hydrogen
-    output_path_cap = snakemake.config["electricity"]["agg_p_nom_limits"]
-    output_path_gen = snakemake.config["electricity"]["agg_e_gen_limits"]
+    output_path_cap = snakemake.input.agg_p_nom_limits
+    output_path_gen = snakemake.input.agg_e_gen_limits
 
     # creates csv with installed capacities per target year aggregated to country level
     build_sce_capacities(input_path_cap, input_path_h2,
@@ -3654,7 +3654,8 @@ if __name__ == "__main__":
     n = set_temporal_aggregation(n, opts, solver_name)
 
     limit_type = "config"
-    limit = get(snakemake.config["co2_budget"], investment_year)
+    co2_budget = snakemake.config["co2_budget"][snakemake.config["run"]["name"]]
+    limit = get(co2_budget, investment_year)
     for o in opts:
         if "cb" not in o:
             continue

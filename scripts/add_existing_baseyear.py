@@ -614,7 +614,7 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
     pop_layout = pd.read_csv(pop_path, index_col=0)
 
     # get scenario assumption for base year
-    agg_p_nom_sce = pd.read_csv(snakemake.config["electricity"]["agg_p_nom_limits"], index_col=[0])
+    agg_p_nom_sce = pd.read_csv(snakemake.input.agg_p_nom_limits, index_col=[0])
     agg_p_nom_base = agg_p_nom_sce[["carrier", str(base_year)]]
 
     # import JRC powerplant dataframe containing installed capacities per region
@@ -713,7 +713,7 @@ if __name__ == "__main__":
         n, grouping_years_power, costs, baseyear
     )
 
-    add_existing_sce_capacities(n, baseyear, snakemake.config["electricity"]["agg_p_nom_limits"],
+    add_existing_sce_capacities(n, baseyear, snakemake.input.agg_p_nom_limits,
                                 snakemake.input.clustered_pop_layout, costs)
 
     if "H" in opts:

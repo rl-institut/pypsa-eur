@@ -20,7 +20,9 @@ rule add_existing_baseyear:
         existing_onwind="data/existing_infrastructure/onwind_capacity_IRENA.csv",
         existing_offwind="data/existing_infrastructure/offwind_capacity_IRENA.csv",
         existing_ppls="data/scenario/JRC_OPEN_UNITS.csv",
-        regions_onshore=RESOURCES + "regions_onshore_elec_s{simpl}_{clusters}.geojson"
+        regions_onshore=RESOURCES + "regions_onshore_elec_s{simpl}_{clusters}.geojson",
+        agg_p_nom_limits=RESOURCES + "agg_p_nom_sce.csv",
+        agg_e_gen_limits=RESOURCES + "agg_gen_sce.csv",
     output:
         RESULTS
         + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc",
@@ -82,6 +84,8 @@ rule solve_sector_network_myopic:
         + "prenetworks-brownfield/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc",
         costs="data/costs_{planning_horizons}.csv",
         config=RESULTS + "config/config.yaml",
+        agg_p_nom_limits=RESOURCES + "agg_p_nom_sce.csv",
+        agg_e_gen_limits=RESOURCES + "agg_gen_sce.csv",
     output:
         RESULTS
         + "postnetworks/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc",

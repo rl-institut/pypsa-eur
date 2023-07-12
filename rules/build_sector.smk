@@ -682,6 +682,8 @@ rule prepare_sector_network:
         tyndp_supply= "data/scenario/tyndp/220310_Updated_Electricity_Modelling_Results.xlsx",
         tyndp_hydrogen= "data/scenario/tyndp/220310_Updated_Hydrogen_Data.xlsx",
         tyndp_dh_share= "data/scenario/tyndp/district_heating_share.csv",
+        agg_p_nom_limits=RESOURCES + "agg_p_nom_sce.csv",
+        agg_e_gen_limits=RESOURCES + "agg_gen_sce.csv",
         shipping_demand=RESOURCES + "shipping_demand_s{simpl}_{clusters}.csv",
         transport_demand=RESOURCES + "transport_demand_s{simpl}_{clusters}.csv",
         transport_data=RESOURCES + "transport_data_s{simpl}_{clusters}.csv",
