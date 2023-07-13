@@ -1421,19 +1421,60 @@ def add_land_transport(n, costs):
 
     fuel_cell_share = get(options["land_transport_fuel_cell_share"], investment_year)
     electric_share = get(options["land_transport_electric_share"], investment_year)
-    ice_share = get(options["land_transport_ice_share"], investment_year)
+    oil_share = get(options["land_transport_oil_share"], investment_year)
+    gas_share = get(options["land_transport_gas_share"], investment_year)
 
-    total_share = fuel_cell_share + electric_share + ice_share
+    # total land transport demand for modelled countries
+    countries = snakemake.config["countries"]
+    pac_ltr_ele = get_pac_demand_subsector(pac_dict["transport"],"Electricity")[str(investment_year)]
+    pac_ltr_oil = get_pac_demand_subsector(pac_dict["transport"], "Liquid oil")[str(investment_year)] \
+                  + get_pac_demand_subsector(pac_dict["transport"], "Liquid & Gas biofuel")[str(investment_year)] \
+                  + get_pac_demand_subsector(pac_dict["transport"], "Liquid and Gas e-Fuel")[str(investment_year)]
+    pac_ltr_gas = get_pac_demand_subsector(pac_dict["transport"],"Gas natural")[str(investment_year)]
+    pac_ltr_h2 = get_pac_demand_subsector(pac_dict["transport"],"Gas hydrogen")[str(investment_year)]
+    pac_ltr_total = pac_ltr_ele + pac_ltr_oil + pac_ltr_gas + pac_ltr_h2
+
+    # Getting different shares according to CLEVER data
+    # BEV share
+    electric_share = pac_ltr_ele.sum() / pac_ltr_total.sum()
+    # FCEV share
+    fuel_cell_share = pac_ltr_h2.sum() / pac_ltr_total.sum()
+    # ICEV share
+    oil_share = pac_ltr_oil.sum() / pac_ltr_total.sum()
+    # gas share
+    gas_share = pac_ltr_gas.sum() / pac_ltr_total.sum()
+
+    total_share = fuel_cell_share + electric_share + oil_share + gas_share
     if total_share != 1:
         logger.warning(
             f"Total land transport shares sum up to {total_share:.2%}, corresponding to increased or decreased demand assumptions."
         )
 
-    logger.info(f"FCEV share: {fuel_cell_share*100}%")
-    logger.info(f"EV share: {electric_share*100}%")
-    logger.info(f"ICEV share: {ice_share*100}%")
+    logger.info(f"FCEV share: {fuel_cell_share:.2%}")
+    logger.info(f"EV share: {electric_share:.2%}")
+    logger.info(f"ICEV Oil share: {oil_share:.2%}")
+    logger.info(f"ICEV Gas share: {gas_share:.2%}")
 
     nodes = pop_layout.index
+
+    def scale_ltr_to_sce_demand(df_ltr_nat, pes_ltr, carrier):
+        """
+        Scale the demand of land transport for a given carrier to be the equivalent demand of the scenario
+        @type carrier: str
+        Carrier can either be 'BEV', 'FCEV', 'ICEV_oil' or 'ICEV_gas'.
+        """
+        # get regional distributed pypsa (pes) demand
+        pes_ltr_reg = pes_ltr.sum().to_frame() / 1e6
+
+        # distribute CLEVER demand regionally analogue to pypsa (pes) regional distribution
+        clever_ltr_reg = distribute_sce_demand_by_pes_layout(df_ltr_nat, pes_ltr_reg, pop_layout)
+        # get regional scale factor from resulting regionally distributed demand that can be applied to time series data
+        scale_factor = clever_ltr_reg.div(pes_ltr_reg[0])
+
+        # update BEV/FCEV/ICEV demand time series to CLEVER data using regional scale factor
+        p_set_ltr = pes_ltr.mul(scale_factor, axis=1)
+
+        return p_set_ltr
 
     if electric_share > 0:
         n.add("Carrier", "Li ion")
@@ -1447,15 +1488,13 @@ def add_land_transport(n, costs):
             unit="MWh_el",
         )
 
-        p_set = (
-            electric_share
-            * (
-                transport[nodes]
-                + cycling_shift(transport[nodes], 1)
-                + cycling_shift(transport[nodes], 2)
-            )
-            / 3
-        )
+        # get pypsa (pes) land transport data
+        pes_ltr = (transport[nodes] + cycling_shift(transport[nodes], 1)
+                   + cycling_shift(transport[nodes], 2)) / 3
+
+        p_set_ltr_ele = scale_ltr_to_sce_demand(pac_ltr_ele, pes_ltr, "BEV")
+
+        p_set = p_set_ltr_ele
 
         n.madd(
             "Load",
@@ -1463,10 +1502,14 @@ def add_land_transport(n, costs):
             suffix=" land transport EV",
             bus=nodes + " EV battery",
             carrier="land transport EV",
-            p_set=p_set,
+            p_set=p_set_ltr_ele,
         )
 
-        p_nom = number_cars * options.get("bev_charge_rate", 0.011) * electric_share
+        # regionally distribute electric share
+        pes_ltr_ele_reg = pes_ltr.sum().to_frame() / 1e6
+        pes_ltr_ele_reg['ctry'] = pes_ltr_ele_reg.index.str[:2]
+        electric_share_reg = pes_ltr_ele_reg.ctry.map(pac_ltr_ele.div(pac_ltr_total))
+        p_nom = number_cars.mul(electric_share_reg) * options.get("bev_charge_rate", 0.011)
 
         n.madd(
             "Link",
@@ -1499,10 +1542,9 @@ def add_land_transport(n, costs):
 
     if electric_share > 0 and options["bev_dsm"]:
         e_nom = (
-            number_cars
+            number_cars.mul(electric_share_reg)
             * options.get("bev_energy", 0.05)
             * options["bev_availability"]
-            * electric_share
         )
 
         n.madd(
@@ -3294,7 +3336,7 @@ def get_pac_demand_sector(sector: str) -> pd.DataFrame:
     gets pac demand for sector (building, transport, industry)
 
     paramter:
-    @param sector: either 'industry', 'building' or 'transport'
+    @param sector: either 'industry', 'building', 'transport' or 'fossil_fuel'
     @return: pandas DataFrame with multiindex of country and subsectors
     """
     countries = snakemake.config["countries"]
@@ -3317,13 +3359,20 @@ def get_pac_demand_sector(sector: str) -> pd.DataFrame:
             index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
                           }
     elif sector == "transport":
-        sector_dict = {ctry: pd.read_csv(
+        sector_dict = {ctry: pd.concat((pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years] for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_subsector.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
                           }
+    elif sector == "fossil_fuel":
+        sector_dict = {ctry: pd.read_csv(
+            snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_ff.csv", decimal='.', delimiter=',',
+            index_col=0, skiprows=range(1,4)).fillna(0.0)[:-1][years] for ctry in countries
+                       }
     else:
         raise Exception("Invalid sector information. Please enter either 'buildings', \
-                    'industry' or 'transport'.")
+                    'industry', 'transport' or 'fossil_fuel'.")
 
     # exract country and subsector information in separate column to use as index later
     for ctry in countries:
@@ -3407,7 +3456,7 @@ if __name__ == "__main__":
     )
 
     # import all pac scenario demand as dictionary of sectors
-    sectors = ["buildings","industry","transport"]
+    sectors = ["buildings","industry","transport", "fossil_fuel"]
     pac_dict = {sector: get_pac_demand_sector(sector) for sector in sectors}
 
     patch_electricity_network(n)
