@@ -3664,6 +3664,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
     years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
+    years = ["2030", "2040", "2050"]
     # import capacities in dictionary
     df_caps = {carr: pd.read_csv(input_path_cap + f"/clever_supply_{indicator}_{carr}.csv",
                                     decimal=',', delimiter=';', index_col=0) \
@@ -3686,6 +3687,13 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df.set_index(["country","carrier"], inplace=True)
     df = df.sort_index(level=[0])
     df.index.names = ["country","carrier"]
+
+    # add NaN rows for conventionels
+    if indicator == "capacity":
+        carr = ["nuclear", "oil", "gas", "coal & lignite", "electrolyser"] + carriers
+        ctys = list(df.index.get_level_values("country").unique())
+        multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
+        df = df.reindex(multi_idx)
 
     # save to csv in stated output path and file name
     df.to_csv(output_path, index=True)
