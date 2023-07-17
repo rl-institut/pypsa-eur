@@ -418,22 +418,21 @@ sector:
   MWh_MeOH_per_tCO2: 4.0321 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   MWh_MeOH_per_MWh_e: 3.6907 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   shipping_hydrogen_liquefaction: false # whether to consider liquefaction costs for shipping H2 demands
-  shipping_hydrogen_share: false
-#    2020: 0
-#    2030: 0
-#    2040: 0
-#    2050: 0
-  shipping_methanol_share: false
-#    2020: 0
-#    2030: 0.3
-#    2040: 0.7
-#    2050: 1
-  shipping_oil_share: true
-#    2020: 1
-#    2030: 0.7
-#    2040: 0.3
-#    2050: 0
-  shipping_gas_share: true
+  shipping_hydrogen_share:
+    2020: 0
+    2030: 0
+    2040: 0
+    2050: 0
+  shipping_methanol_share:
+    2020: 0
+    2030: 0.3
+    2040: 0.7
+    2050: 1
+  shipping_oil_share:
+    2020: 1
+    2030: 0.7
+    2040: 0.3
+    2050: 0
   shipping_methanol_efficiency: 0.46 # 10-15% higher https://www.iea-amf.org/app/webroot/files/file/Annex%20Reports/AMF_Annex_56.pdf, https://users.ugent.be/~lsileghe/documents/extended_abstract.pdf
   shipping_oil_efficiency: 0.40 #For conversion of fuel oil to propulsion in 2011
   aviation_demand_factor: 1. # relative aviation demand compared to today

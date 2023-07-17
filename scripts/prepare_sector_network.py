@@ -1470,6 +1470,8 @@ def add_land_transport(n, costs):
         clever_ltr_reg = distribute_sce_demand_by_pes_layout(df_ltr_nat, pes_ltr_reg, pop_layout)
         # get regional scale factor from resulting regionally distributed demand that can be applied to time series data
         scale_factor = clever_ltr_reg.div(pes_ltr_reg[0])
+        # fill nan with scale factor of 1.0
+        scale_factor.fillna(1.0, inplace=True)
 
         # update BEV/FCEV/ICEV demand time series to CLEVER data using regional scale factor
         p_set_ltr = pes_ltr.mul(scale_factor, axis=1)
@@ -1733,6 +1735,9 @@ def add_heat(n, costs):
                                                              pes_water_heat_reg, pop_layout)
     scale_factor_space = pac_space_heat_reg.div(pes_space_heat_reg[0])
     scale_factor_water = pac_water_heat_reg.div(pes_water_heat_reg[0])
+    # fill nan with scale factor of 1.0
+    scale_factor_space.fillna(1.0, inplace=True)
+    scale_factor_water.fillna(1.0, inplace=True)
 
     # update space and water heat demand to PAC data using regional scale factors
     heat_demand["residential space"] *= scale_factor_space
@@ -2460,14 +2465,16 @@ def add_industry(n, costs):
 
     # get pac scenario industry biomass demand
     pac_bio_nat = get_pac_demand_subsector(pac_dict["industry"],"Solid biofuel")[str(investment_year)]
+    # distribute PAC scenario biomass demand
+    pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"] / 1e6
+    pac_bio_reg = distribute_sce_demand_by_pes_layout(pac_bio_nat, pes_bio_reg.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_bio_reg.loc[pac_bio_reg.isna()] = pes_bio_reg.loc[pac_bio_reg.isna()]
 
     if options.get("biomass_spatial", options["biomass_transport"]):
-        # distribute PAC scenario biomass demand
-        pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
-        pac_bio_reg = distribute_sce_demand_by_pes_layout(pac_bio_nat, pes_bio_reg, pop_layout)
         p_set_bio = pac_bio_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        p_set_bio = pac_bio_nat.sum() / nhours
+        p_set_bio = pac_bio_reg.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -2518,15 +2525,17 @@ def add_industry(n, costs):
     pac_gas_nat = get_pac_demand_subsector(pac_dict["industry"],"Gas natural")[str(investment_year)] \
                 + get_pac_demand_subsector(pac_dict["industry"],"Biomethane")[str(investment_year)] \
                 + get_pac_demand_subsector(pac_dict["industry"],"Gas e-fuel")[str(investment_year)]
+    # distribute PAC scenario gas demand
+    pes_gas_reg = industrial_demand.loc[spatial.biomass.locations, "methane"] / 1e6
+    pac_gas_reg = distribute_sce_demand_by_pes_layout(pac_gas_nat, pes_gas_reg.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_gas_reg.loc[pac_gas_reg.isna()] = pes_gas_reg.loc[pac_gas_reg.isna()]
 
     if options["gas_network"]:
-        # distribute PAC scenario gas demand
-        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "methane"].to_frame() / 1e6
-        pac_gas_reg = distribute_sce_demand_by_pes_layout(pac_gas_nat, pes_gas_nat, pop_layout)
         # PAC industry demand is in TWh, pypsa demand in MWh
         p_set_gas = pac_gas_reg.rename(index=lambda x: x + " gas for industry") * 1e6 / nhours
     else:
-        p_set_gas = pac_gas_nat.sum()
+        p_set_gas = pac_gas_nat.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -2569,10 +2578,13 @@ def add_industry(n, costs):
 
     # get PAC scenario industrial hydrogen demand
     pac_h2_nat = get_pac_demand_subsector(pac_dict["industry"],"Gas hydrogen")[str(investment_year)]
-    pes_h2_reg = industrial_demand.loc[nodes, "hydrogen"].to_frame() / 1e6
+    pes_h2_reg = industrial_demand.loc[nodes, "hydrogen"] / 1e6
 
     # distribute PAC scenario industrial hydrogen demand
-    pac_h2_reg = distribute_sce_demand_by_pes_layout(pac_h2_nat, pes_h2_reg, pop_layout)
+    pac_h2_reg = distribute_sce_demand_by_pes_layout(pac_h2_nat, pes_h2_reg.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_h2_reg.loc[pac_h2_reg.isna()] = pes_h2_reg.loc[pac_h2_reg.isna()]
+
     p_set_h2 = pac_h2_reg * 1e6 / nhours
 
 
@@ -2602,7 +2614,14 @@ def add_industry(n, costs):
         pd.read_csv(snakemake.input.shipping_demand, index_col=0).squeeze() * nyears
     )
     all_navigation = domestic_navigation + international_navigation
-    p_set = all_navigation * 1e6 / nhours
+
+    # get PAC total shipping demand and distribute regionally
+    pac_shipping_nat = get_pac_demand_subsector(pac_dict["transport"], "Marine")[str(investment_year)]
+    pac_shipping_reg = distribute_sce_demand_by_pes_layout(pac_shipping_nat, all_navigation.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_shipping_reg.loc[pac_shipping_reg.isna()] = all_navigation.loc[pac_shipping_reg.isna()]
+
+    p_set = pac_shipping_reg * 1e6 / nhours
 
     if shipping_hydrogen_share:
         oil_efficiency = options.get(
@@ -2815,7 +2834,13 @@ def add_industry(n, costs):
                 + get_pac_demand_subsector(pac_dict["industry"],"Liquid biofuel")[str(investment_year)] \
                 + get_pac_demand_subsector(pac_dict["industry"],"Liquid e-fuel")[str(investment_year)]
 
-    p_set_nap = demand_factor * pac_nap_nat.sum() * 1e6 / nhours
+    # distribute PAC demand regionally
+    pes_nap_reg = industrial_demand.loc[nodes, "naphtha"] / 1e6
+    pac_nap_reg = distribute_sce_demand_by_pes_layout(pac_nap_nat, pes_nap_reg.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_nap_reg.loc[pac_nap_reg.isna()] = pes_nap_reg.loc[pac_nap_reg.isna()]
+
+    p_set_nap = demand_factor * pac_nap_reg.sum() * 1e6 / nhours
 
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
@@ -2834,8 +2859,15 @@ def add_industry(n, costs):
         logger.warning(f"Changing aviation demand by {demand_factor*100-100:+.2f}%.")
 
     # get PAC aviation demand on liquid fuels (kerosene) and sum to one node
-    pac_avi_liq = get_pac_demand_subsector(pac_dict["transport"],"Aviation")[str(investment_year)].loc[countries]
-    p_set_avi_ker = demand_factor * pac_avi_liq.sum() * 1e6 / nhours
+    pac_avi_nat = get_pac_demand_subsector(pac_dict["transport"], "Aviation")[str(investment_year)].loc[countries]
+    # distribute regionally
+    all_aviation = ["total international aviation", "total domestic aviation"]
+    pes_aviation = pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1)
+    pac_avi_reg = distribute_sce_demand_by_pes_layout(pac_avi_nat, pes_aviation.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_avi_reg[pac_avi_reg.isna()] = pes_aviation.loc[pac_avi_reg.isna()]
+
+    p_set_avi_ker = demand_factor * pac_avi_reg.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -2895,10 +2927,12 @@ def add_industry(n, costs):
 
     # get PAC scenario industrial electricity demand
     pac_ele_nat = get_pac_demand_subsector(pac_dict["industry"],"Electricity")[str(investment_year)]
-    pes_ele_reg = industrial_demand.loc[nodes, "electricity"].to_frame() / 1e6
+    pes_ele_reg = industrial_demand.loc[nodes, "electricity"] / 1e6
 
     # distribute PAC electricity demand
-    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg, pop_layout)
+    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg.to_frame(), pop_layout)
+    # fill missing values with pypsa values
+    pac_ele_reg.loc[pac_ele_reg.isna()] = pes_ele_reg.loc[pac_ele_reg.isna()]
 
     # replace pes with PAC electricity demand
     p_set_ele = pac_ele_reg * 1e6 / nhours
@@ -3517,6 +3551,8 @@ if __name__ == "__main__":
     # scale and distribute
     pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg, pop_layout)
     scale_factor = pac_ele_reg.div(pes_ele_reg[0])
+    # fill nan scale factors with 1.0
+    scale_factor.fillna(1.0, inplace=True)
 
     # update electricity demand to PAC data using regional scale factor
     n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"] = \
