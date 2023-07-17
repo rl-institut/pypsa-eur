@@ -337,11 +337,15 @@ def add_CCL_constraints(n, config):
                 lhs_slack_min_2.sel(group=index))
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
+    print(lhs)
+    print(s)
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-
+    # print(lhs.sel(group=index))
+    # print(minimum.loc[index])
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min"
+            lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
+            #mask = ToDo: boolean Array where True if minimum[i] not NaN
         )
 
 
@@ -376,7 +380,7 @@ def add_gen_constraints(n, config):
         config["electricity"]["agg_e_gen_limits"], index_col=[0, 1]
     )
     agg_e_limits = (agg_e_limits[target_year]).fillna(0)*1000
-    minimum = xr.DataArray(agg_e_limits).rename(dim_0="group2")
+    minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
 
     logger.info("Adding generation constraints per carrier and country")
     args = [["Generator", "p", "p_slack_min_1", "p_slack_min_2", "bus", "carrier"],
@@ -417,10 +421,10 @@ def add_gen_constraints(n, config):
             grouper = [gens.bus.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator"])
-            lhs = p.groupby(grouper).sum().rename(bus="country").rename(group="group2")
+            lhs = p.groupby(grouper).sum().rename(bus="country")
 
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country").rename(group="group2")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country").rename(group="group2")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
         else:
             n.links['p_slack_min_1_opt'] = np.nan
             n.links['p_slack_min_2_opt'] = np.nan
@@ -438,26 +442,28 @@ def add_gen_constraints(n, config):
             grouper = [gens.bus1.map(n.buses.country), gens.carrier]
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link"])
-            lhs = p.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country").rename(group="group2")
+            lhs = p.groupby(grouper).sum().rename(bus1="country")
+            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
+            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
 
-        index = minimum.indexes["group2"].intersection(lhs.indexes["group2"])
-        expr = (lhs.sel(group2=index) + lhs_slack_min_1.sel(group2=index) -
-                lhs_slack_min_2.sel(group2=index))
+        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+        expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
+                lhs_slack_min_2.sel(group=index))
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
 
-    index = minimum.indexes["group2"].intersection(lhs.indexes["group2"])
+    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
     #index.names = ["country2", "carrier2"]
-    # print(lhs.sel(group2=index))
-    # print(minimum.loc[index]/t)
+    #print(lhs.sel(group2=index))
+    #print(minimum.loc[index]/t)
+    #print(lhs.sel(group=index) == minimum.loc[index]/t)
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group2=index) == minimum.loc[index]/t, name="agg_e_min", coords=index
+            lhs.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
         )
-    #print(lhs.sel(group2=index) == minimum.loc[index]/t)
+
     print(n.model.constraints["agg_e_min"])
+    print(a)
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
