@@ -3489,6 +3489,99 @@ def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layo
 
     return sce_demand_reg
 
+def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
+    """
+    builds scenario installed electricity production capacities and saves as csv
+
+    parameter:
+    @param input_path_cap: path to capacity/production files
+    @param output_path: path and name of output file
+    @param indicator: whether capacity or production is build
+    return:
+    NONE
+    """
+
+    # countries modelled and chosen years
+    countries = snakemake.config["countries"]
+    years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
+
+    if indicator == "capacity":
+        # import capacities in dictionary
+        # list of technologies
+        cap_techs = ["Fossil oil", "Fossil gas", "Fossil coal", "Nuclear",
+                     "RES wind-onshore", "RES wind-offshore", "RES solar pv",
+                     "RES other hydroelectric"]
+        supply_dict = {ctry: pd.concat((pd.read_csv(
+            input_path_cap + f"/capacities/{ctry}_supply_caps_ff.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
+            input_path_cap + f"/capacities/{ctry}_supply_caps_res.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[cap_techs,:] for ctry in countries
+                       }
+
+        # exract country and subsector information in separate column to use as index later
+        csv_names_dict = {"Fossil oil": "oil",
+                          "Fossil gas": "gas",
+                          "Fossil coal": "coal & lignite",
+                          "Nuclear": "nuclear",
+                          "RES wind-onshore": "onwind",
+                          "RES wind-offshore": "offwind",
+                          "RES solar pv": "solar",
+                          "RES other hydroelectric": "hydro"}
+        for ctry in countries:
+            supply_dict[ctry]["country"] = ctry
+            supply_dict[ctry]["carrier"] = supply_dict[ctry].index.values
+            supply_dict[ctry].replace(csv_names_dict, inplace=True)
+
+        # append dataframes in dict to each other
+        df = pd.concat(supply_dict, axis=0)
+        # set multiindex as country and carrier
+        df.set_index(["country", "carrier"], inplace=True)
+        df.index.names = ["country", "carrier"]
+
+        # add NaN rows for electrolysers
+        carr = ["electrolyser"] + list(df.index.get_level_values("carrier").unique())
+        ctrys = list(df.index.get_level_values("country").unique())
+        multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
+        df = df.reindex(multi_idx)
+
+    elif indicator == "production":
+        # import production in dictionary
+        # list of technologies to import
+        gen_techs = ["Elec plant with coal (solid coal)", "CHP (solid coal)", "Elec plant with liquid (liquid ff)",
+                     "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear"]
+        supply_dict = {ctry: pd.concat((pd.read_csv(
+            input_path_cap + f"/generation/{ctry}_supply_prod_ff.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
+            input_path_cap + f"/generation/{ctry}_supply_prod_res.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[gen_techs,:] for ctry in countries
+                       }
+
+        # exract country and subsector information in separate column to use as index later
+        csv_names_dict = {"Elec plant with coal (solid coal)": "coal & lignite",
+                          "CHP (solid coal)": "coal & lignite",
+                          "Elec plant with liquid (liquid ff)": "oil",
+                          "CHP (liquid ff)": "oil",
+                          "Elec plant with gas (gas ff)": "gas",
+                          "CHP (gas ff)": "gas",
+                          "RES hydroelectric": "hydro",
+                          "Nuclear": "nuclear"}
+        for ctry in countries:
+            supply_dict[ctry] *= 1e3  # conversion from TWH to GWh
+            supply_dict[ctry]["country"] = ctry
+            supply_dict[ctry]["carrier"] = supply_dict[ctry].index.values
+            supply_dict[ctry].replace(csv_names_dict, inplace=True)
+
+        # append dataframes in dict to each other
+        df = pd.concat(supply_dict, axis=0)
+        # set multiindex as country and carrier
+        df.set_index(["country", "carrier"], inplace=True)
+        df.index.names = ["country", "carrier"]
+        # group by carrier and sum to yield sum of elec and chp plant electricity production
+        df = df.groupby(["country", "carrier"]).sum()
+
+    # save to csv in stated output path and file name
+    df.to_csv(output_path, index=True)
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
@@ -3627,6 +3720,15 @@ if __name__ == "__main__":
 
     if options["allam_cycle"]:
         add_allam(n, costs)
+
+    input_path_pac = snakemake.input.pac_supply_files
+    output_path_cap = snakemake.config["electricity"]["agg_p_nom_limits"]
+    output_path_prod = snakemake.config["electricity"]["agg_e_gen_limits"]
+
+    # creates csv with installed capacities in MW per target year aggregated to country level
+    build_sce_cap_prod(input_path_pac, output_path_cap, "capacity")
+    # creates csv with production amount in GWh per target year aggregated to country level
+    build_sce_cap_prod(input_path_pac, output_path_prod, "production")
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)
