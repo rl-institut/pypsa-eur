@@ -2499,7 +2499,7 @@ def add_industry(n, costs):
         clever_bio_reg = distribute_sce_demand_by_pes_layout(clever_bio_nat, pes_bio_reg, pop_layout)
         p_set_bio = clever_bio_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
     else:
-        p_set_bio = clever_bio_nat.sum() / nhours
+        p_set_bio = clever_bio_nat.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
@@ -2556,7 +2556,7 @@ def add_industry(n, costs):
         # CLEVER industry demand is in TWh, pypsa demand in MWh
         p_set_gas = clever_gas_reg.rename(index=lambda x: x + " gas for industry") * 1e6 / nhours
     else:
-        p_set_gas = clever_gas_nat.sum()
+        p_set_gas = clever_gas_nat.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
