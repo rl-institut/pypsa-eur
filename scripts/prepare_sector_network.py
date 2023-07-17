@@ -1457,7 +1457,7 @@ def add_land_transport(n, costs):
 
     nodes = pop_layout.index
 
-    def scale_ltr_to_sce_demand(df_ltr_nat, pes_ltr, carrier):
+    def scale_ltr_to_sce_demand(df_ltr_nat, pes_ltr):
         """
         Scale the demand of land transport for a given carrier to be the equivalent demand of the scenario
         @type carrier: str
@@ -1492,7 +1492,7 @@ def add_land_transport(n, costs):
         pes_ltr = (transport[nodes] + cycling_shift(transport[nodes], 1)
                    + cycling_shift(transport[nodes], 2)) / 3
 
-        p_set_ltr_ele = scale_ltr_to_sce_demand(pac_ltr_ele, pes_ltr, "BEV")
+        p_set_ltr_ele = scale_ltr_to_sce_demand(pac_ltr_ele, pes_ltr)
 
         p_set = p_set_ltr_ele
 
@@ -1560,18 +1560,23 @@ def add_land_transport(n, costs):
         )
 
     if fuel_cell_share > 0:
+
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land FCEV transport data with PAC demand data
+        p_set_ltr_h2 = scale_ltr_to_sce_demand(pac_ltr_h2, pes_ltr)
+
         n.madd(
             "Load",
             nodes,
             suffix=" land transport fuel cell",
             bus=nodes + " H2",
             carrier="land transport fuel cell",
-            p_set=fuel_cell_share
-            / options["transport_fuel_cell_efficiency"]
-            * transport[nodes],
+            p_set=p_set_ltr_h2,
         )
 
-    if ice_share > 0:
+    if oil_share > 0:
         if "oil" not in n.buses.carrier.unique():
             n.madd(
                 "Bus",
@@ -1581,7 +1586,11 @@ def add_land_transport(n, costs):
                 unit="MWh_LHV",
             )
 
-        ice_efficiency = options["transport_internal_combustion_efficiency"]
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land ICEV transport data with CLEVER demand data
+        p_set_ltr_liq = scale_ltr_to_sce_demand(pac_ltr_oil, pes_ltr)
 
         n.madd(
             "Load",
@@ -1589,13 +1598,11 @@ def add_land_transport(n, costs):
             suffix=" land transport oil",
             bus=spatial.oil.nodes,
             carrier="land transport oil",
-            p_set=ice_share / ice_efficiency * transport[nodes],
+            p_set=p_set_ltr_liq,
         )
 
         co2 = (
-            ice_share
-            / ice_efficiency
-            * transport[nodes].sum().sum()
+            p_set_ltr_liq.sum().sum()
             / nhours
             * costs.at["oil", "CO2 intensity"]
         )
@@ -1605,6 +1612,45 @@ def add_land_transport(n, costs):
             "land transport oil emissions",
             bus="co2 atmosphere",
             carrier="land transport oil emissions",
+            p_set=-co2,
+        )
+
+    if gas_share > 0:
+        if "gas" not in n.buses.carrier.unique():
+            n.madd(
+                "Bus",
+                spatial.gas.nodes,
+                location=spatial.gas.locations,
+                carrier="gas",
+                unit="MWh_LHV",
+            )
+
+        # get pypsa (pes) land transport data
+        pes_ltr = transport[nodes]
+
+        # substitute land ICEV transport data with PAC demand data
+        p_set_ltr_gas = scale_ltr_to_sce_demand(pac_ltr_gas, pes_ltr)
+
+        n.madd(
+            "Load",
+            nodes,
+            suffix=" land transport gas",
+            bus=spatial.gas.nodes,
+            carrier="land transport gas",
+            p_set=p_set_ltr_gas,
+        )
+
+        co2 = (
+                p_set_ltr_gas.sum().sum()
+                / nhours
+                * costs.at["gas", "CO2 intensity"]
+        )
+
+        n.add(
+            "Load",
+            "land transport gas emissions",
+            bus="co2 atmosphere",
+            carrier="land transport gas emissions",
             p_set=-co2,
         )
 
