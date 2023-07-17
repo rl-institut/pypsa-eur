@@ -277,8 +277,11 @@ def add_CCL_constraints(n, config):
     agg_p_nom_sce = pd.read_csv(
         config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
-    agg_p_nom_min = (agg_p_nom_sce[target_year]).fillna(0)
-    minimum = xr.DataArray(agg_p_nom_min).rename(dim_0="group")
+    agg_p_nom_min = (agg_p_nom_sce[target_year])
+    #agg_p_nom_min_mask = [False if str(value) =="nan" else True for value in agg_p_nom_min.values]
+    #mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
+    minimum = xr.DataArray(agg_p_nom_min.fillna(0)).rename(dim_0="group")
+
 
     logger.info("Adding generation capacity constraints per carrier and country")
     args = [
@@ -332,21 +335,23 @@ def add_CCL_constraints(n, config):
             lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
             lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
 
+
         index = minimum.indexes["group"].intersection(lhs.indexes["group"])
         expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
                 lhs_slack_min_2.sel(group=index))
         exprs.append(expr)
+
     lhs = merge(exprs, join="outer")
-    print(lhs)
-    print(s)
-    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-    # print(lhs.sel(group=index))
-    # print(minimum.loc[index])
+    missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
+    index = minimum.indexes["group"].drop(missing_index)
+    agg_p_nom_min_mask = [False if str(value) =="nan" else True for value in agg_p_nom_min.loc[lhs.indexes["group"]].values]
+    mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
-            #mask = ToDo: boolean Array where True if minimum[i] not NaN
+            mask = mask
         )
+    print(n.model.constraints["agg_p_nom_min"])
 
 
 def add_gen_constraints(n, config):
@@ -453,17 +458,14 @@ def add_gen_constraints(n, config):
     lhs = merge(exprs, join="outer")
 
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-    #index.names = ["country2", "carrier2"]
-    #print(lhs.sel(group2=index))
-    #print(minimum.loc[index]/t)
-    #print(lhs.sel(group=index) == minimum.loc[index]/t)
+
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
         )
 
     print(n.model.constraints["agg_e_min"])
-    print(a)
+
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):

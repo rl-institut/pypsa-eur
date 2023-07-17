@@ -3664,7 +3664,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
     years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
-    years = ["2030", "2040", "2050"]
+
     # import capacities in dictionary
     df_caps = {carr: pd.read_csv(input_path_cap + f"/clever_supply_{indicator}_{carr}.csv",
                                     decimal=',', delimiter=';', index_col=0) \
