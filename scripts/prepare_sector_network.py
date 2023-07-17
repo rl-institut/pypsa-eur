@@ -2443,6 +2443,7 @@ def add_industry(n, costs):
     nodes = pop_layout.index
     nhours = n.snapshot_weightings.generators.sum()
     nyears = nhours / 8760
+    countries = snakemake.config["countries"]
 
     # 1e6 to convert TWh to MWh
     industrial_demand = (
@@ -2520,10 +2521,10 @@ def add_industry(n, costs):
 
     if options["gas_network"]:
         # distribute PAC scenario gas demand
-        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "solid biomass"].to_frame() / 1e6
+        pes_gas_nat = industrial_demand.loc[spatial.biomass.locations, "methane"].to_frame() / 1e6
         pac_gas_reg = distribute_sce_demand_by_pes_layout(pac_gas_nat, pes_gas_nat, pop_layout)
         # PAC industry demand is in TWh, pypsa demand in MWh
-        p_set_gas = pac_gas_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
+        p_set_gas = pac_gas_reg.rename(index=lambda x: x + " gas for industry") * 1e6 / nhours
     else:
         p_set_gas = pac_gas_nat.sum()
 
@@ -2809,15 +2810,12 @@ def add_industry(n, costs):
 
     demand_factor = options.get("HVC_demand_factor", 1)
 
-    # get PAC industrial naphtha demand ()
+    # get PAC industrial naphtha demand (liquid oil, liquid biofuel and e-fuel)
     pac_nap_nat = get_pac_demand_subsector(pac_dict["industry"],"Liquid oil")[str(investment_year)] \
                 + get_pac_demand_subsector(pac_dict["industry"],"Liquid biofuel")[str(investment_year)] \
                 + get_pac_demand_subsector(pac_dict["industry"],"Liquid e-fuel")[str(investment_year)]
-    pes_nap_reg = industrial_demand.loc[nodes, "naphtha"].to_frame() / 1e6
 
-    # distribute PAC scenario industrial naphtha demand
-    pac_nap_reg = distribute_sce_demand_by_pes_layout(pac_nap_nat, pes_nap_reg, pop_layout)
-    p_set_nap = pac_nap_reg * 1e6 / nhours
+    p_set_nap = demand_factor * pac_nap_nat.sum() * 1e6 / nhours
 
     if demand_factor != 1:
         logger.warning(f"Changing HVC demand by {demand_factor*100-100:+.2f}%.")
@@ -2831,22 +2829,20 @@ def add_industry(n, costs):
     )
 
     demand_factor = options.get("aviation_demand_factor", 1)
-    all_aviation = ["total international aviation", "total domestic aviation"]
-    p_set = (
-        demand_factor
-        * pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1).sum()
-        * 1e6
-        / nhours
-    )
+
     if demand_factor != 1:
         logger.warning(f"Changing aviation demand by {demand_factor*100-100:+.2f}%.")
+
+    # get PAC aviation demand on liquid fuels (kerosene) and sum to one node
+    pac_avi_liq = get_pac_demand_subsector(pac_dict["transport"],"Aviation")[str(investment_year)].loc[countries]
+    p_set_avi_ker = demand_factor * pac_avi_liq.sum() * 1e6 / nhours
 
     n.madd(
         "Load",
         ["kerosene for aviation"],
         bus=spatial.oil.nodes,
         carrier="kerosene for aviation",
-        p_set=p_set,
+        p_set=p_set_avi_ker,
     )
 
     # NB: CO2 gets released again to atmosphere when plastics decay or kerosene is burned
