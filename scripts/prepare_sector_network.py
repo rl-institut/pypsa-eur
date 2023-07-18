@@ -1464,14 +1464,18 @@ def add_land_transport(n, costs):
         Carrier can either be 'BEV', 'FCEV', 'ICEV_oil' or 'ICEV_gas'.
         """
         # get regional distributed pypsa (pes) demand
-        pes_ltr_reg = pes_ltr.sum().to_frame() / 1e6
+        pes_ltr_reg = pes_ltr.sum() / 1e6
 
-        # distribute CLEVER demand regionally analogue to pypsa (pes) regional distribution
-        clever_ltr_reg = distribute_sce_demand_by_pes_layout(df_ltr_nat, pes_ltr_reg, pop_layout)
+        # distribute PAC demand regionally analogue to pypsa (pes) regional distribution
+        pac_ltr_reg = distribute_sce_demand_by_pes_layout(df_ltr_nat, pes_ltr_reg.to_frame(), pop_layout)
+        # fill missing values
+        # calculate ratio of pypsa missing values to mean of rest
+        ratio_missing = pes_ltr_reg.loc[pac_ltr_reg.isna()] / pes_ltr_reg.loc[~pac_ltr_reg.isna()].mean()
+        # fill missing values according to calculated pypsa ratio
+        pac_ltr_reg.loc[pac_ltr_reg.isna()] = ratio_missing * pac_ltr_reg.loc[~pac_ltr_reg.isna()].mean()
+
         # get regional scale factor from resulting regionally distributed demand that can be applied to time series data
-        scale_factor = clever_ltr_reg.div(pes_ltr_reg[0])
-        # fill nan with scale factor of 1.0
-        scale_factor.fillna(1.0, inplace=True)
+        scale_factor = pac_ltr_reg.div(pes_ltr_reg[0])
 
         # update BEV/FCEV/ICEV demand time series to CLEVER data using regional scale factor
         p_set_ltr = pes_ltr.mul(scale_factor, axis=1)
@@ -1496,8 +1500,6 @@ def add_land_transport(n, costs):
 
         p_set_ltr_ele = scale_ltr_to_sce_demand(pac_ltr_ele, pes_ltr)
 
-        p_set = p_set_ltr_ele
-
         n.madd(
             "Load",
             nodes,
@@ -1511,6 +1513,9 @@ def add_land_transport(n, costs):
         pes_ltr_ele_reg = pes_ltr.sum().to_frame() / 1e6
         pes_ltr_ele_reg['ctry'] = pes_ltr_ele_reg.index.str[:2]
         electric_share_reg = pes_ltr_ele_reg.ctry.map(pac_ltr_ele.div(pac_ltr_total))
+        # fill missing values with mean electric share of other regions
+        electric_share_reg.loc[electric_share_reg.isna()] = electric_share_reg.loc[~electric_share_reg.isna()].mean()
+
         p_nom = number_cars.mul(electric_share_reg) * options.get("bev_charge_rate", 0.011)
 
         n.madd(
@@ -1722,22 +1727,31 @@ def add_heat(n, costs):
     # assumptions. Thus, only total space and water heating demand can be used to calculate scale factors from PAC
 
     # get pes total space heat demand per region
-    pes_space_heat_reg = heat_demand.sum().unstack().filter(like="space", axis=0).sum().T.to_frame()  / 1e6
-    pes_water_heat_reg = heat_demand.sum().unstack().filter(like="water", axis=0).sum().T.to_frame()  / 1e6
+    pes_space_heat_reg = heat_demand.sum().unstack().filter(like="space", axis=0).sum().T / 1e6
+    pes_water_heat_reg = heat_demand.sum().unstack().filter(like="water", axis=0).sum().T / 1e6
     pac_space_heat_nat = get_pac_demand_subsector(pac_dict["buildings"],"Heating")[str(investment_year)] \
                         + get_pac_demand_subsector(pac_dict["buildings"],"District heating")[str(investment_year)]
     pac_water_heat_nat = get_pac_demand_subsector(pac_dict["buildings"], "Hotwater")[str(investment_year)]
 
     # scale and distribute
     pac_space_heat_reg = distribute_sce_demand_by_pes_layout(pac_space_heat_nat,
-                                                             pes_space_heat_reg, pop_layout)
+                                                             pes_space_heat_reg.to_frame(), pop_layout)
     pac_water_heat_reg = distribute_sce_demand_by_pes_layout(pac_water_heat_nat,
-                                                             pes_water_heat_reg, pop_layout)
+                                                             pes_water_heat_reg.to_frame(), pop_layout)
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing_space = pes_space_heat_reg.loc[pac_space_heat_reg.isna()] / pes_space_heat_reg.loc[
+        ~pac_space_heat_reg.isna()].mean()
+    ratio_missing_water = pes_water_heat_reg.loc[pac_water_heat_reg.isna()] / pes_water_heat_reg.loc[
+        ~pac_water_heat_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_space_heat_reg.loc[pac_space_heat_reg.isna()] = ratio_missing_space * pac_space_heat_reg.loc[
+        ~pac_space_heat_reg.isna()].mean()
+    pac_water_heat_reg.loc[pac_water_heat_reg.isna()] = ratio_missing_water * pac_water_heat_reg.loc[
+        ~pac_water_heat_reg.isna()].mean()
+
     scale_factor_space = pac_space_heat_reg.div(pes_space_heat_reg[0])
     scale_factor_water = pac_water_heat_reg.div(pes_water_heat_reg[0])
-    # fill nan with scale factor of 1.0
-    scale_factor_space.fillna(1.0, inplace=True)
-    scale_factor_water.fillna(1.0, inplace=True)
 
     # update space and water heat demand to PAC data using regional scale factors
     heat_demand["residential space"] *= scale_factor_space
@@ -2468,8 +2482,11 @@ def add_industry(n, costs):
     # distribute PAC scenario biomass demand
     pes_bio_reg = industrial_demand.loc[spatial.biomass.locations, "solid biomass"] / 1e6
     pac_bio_reg = distribute_sce_demand_by_pes_layout(pac_bio_nat, pes_bio_reg.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_bio_reg.loc[pac_bio_reg.isna()] = pes_bio_reg.loc[pac_bio_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_bio_reg.loc[pac_bio_reg.isna()] / pes_bio_reg.loc[~pac_bio_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_bio_reg.loc[pac_bio_reg.isna()] = ratio_missing * pac_bio_reg.loc[~pac_bio_reg.isna()].mean()
 
     if options.get("biomass_spatial", options["biomass_transport"]):
         p_set_bio = pac_bio_reg.rename(index=lambda x: x + " solid biomass for industry") * 1e6 / nhours
@@ -2528,8 +2545,11 @@ def add_industry(n, costs):
     # distribute PAC scenario gas demand
     pes_gas_reg = industrial_demand.loc[spatial.biomass.locations, "methane"] / 1e6
     pac_gas_reg = distribute_sce_demand_by_pes_layout(pac_gas_nat, pes_gas_reg.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_gas_reg.loc[pac_gas_reg.isna()] = pes_gas_reg.loc[pac_gas_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_gas_reg.loc[pac_gas_reg.isna()] / pes_gas_reg.loc[~pac_gas_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_gas_reg.loc[pac_gas_reg.isna()] = ratio_missing * pac_gas_reg.loc[~pac_gas_reg.isna()].mean()
 
     if options["gas_network"]:
         # PAC industry demand is in TWh, pypsa demand in MWh
@@ -2582,8 +2602,11 @@ def add_industry(n, costs):
 
     # distribute PAC scenario industrial hydrogen demand
     pac_h2_reg = distribute_sce_demand_by_pes_layout(pac_h2_nat, pes_h2_reg.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_h2_reg.loc[pac_h2_reg.isna()] = pes_h2_reg.loc[pac_h2_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_h2_reg.loc[pac_h2_reg.isna()] / pes_h2_reg.loc[~pac_h2_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_h2_reg.loc[pac_h2_reg.isna()] = ratio_missing * pac_h2_reg.loc[~pac_h2_reg.isna()].mean()
 
     p_set_h2 = pac_h2_reg * 1e6 / nhours
 
@@ -2618,8 +2641,12 @@ def add_industry(n, costs):
     # get PAC total shipping demand and distribute regionally
     pac_shipping_nat = get_pac_demand_subsector(pac_dict["transport"], "Marine")[str(investment_year)]
     pac_shipping_reg = distribute_sce_demand_by_pes_layout(pac_shipping_nat, all_navigation.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_shipping_reg.loc[pac_shipping_reg.isna()] = all_navigation.loc[pac_shipping_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = all_navigation.loc[pac_shipping_reg.isna()] / all_navigation.loc[~pac_shipping_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_shipping_reg.loc[pac_shipping_reg.isna()] = ratio_missing * pac_shipping_reg.loc[
+        ~pac_shipping_reg.isna()].mean()
 
     p_set = pac_shipping_reg * 1e6 / nhours
 
@@ -2837,8 +2864,11 @@ def add_industry(n, costs):
     # distribute PAC demand regionally
     pes_nap_reg = industrial_demand.loc[nodes, "naphtha"] / 1e6
     pac_nap_reg = distribute_sce_demand_by_pes_layout(pac_nap_nat, pes_nap_reg.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_nap_reg.loc[pac_nap_reg.isna()] = pes_nap_reg.loc[pac_nap_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_nap_reg.loc[pac_nap_reg.isna()] / pes_nap_reg.loc[~pac_nap_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_nap_reg.loc[pac_nap_reg.isna()] = ratio_missing * pac_nap_reg.loc[~pac_nap_reg.isna()].mean()
 
     p_set_nap = demand_factor * pac_nap_reg.sum() * 1e6 / nhours
 
@@ -2864,8 +2894,11 @@ def add_industry(n, costs):
     all_aviation = ["total international aviation", "total domestic aviation"]
     pes_aviation = pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1)
     pac_avi_reg = distribute_sce_demand_by_pes_layout(pac_avi_nat, pes_aviation.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_avi_reg[pac_avi_reg.isna()] = pes_aviation.loc[pac_avi_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_aviation.loc[pac_avi_reg.isna()] / pes_aviation.loc[~pac_avi_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_avi_reg.loc[pac_avi_reg.isna()] = ratio_missing * pac_avi_reg.loc[~pac_avi_reg.isna()].mean()
 
     p_set_avi_ker = demand_factor * pac_avi_reg.sum() * 1e6 / nhours
 
@@ -2931,8 +2964,11 @@ def add_industry(n, costs):
 
     # distribute PAC electricity demand
     pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg.to_frame(), pop_layout)
-    # fill missing values with pypsa values
-    pac_ele_reg.loc[pac_ele_reg.isna()] = pes_ele_reg.loc[pac_ele_reg.isna()]
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_ele_reg.loc[pac_ele_reg.isna()] / pes_ele_reg.loc[~pac_ele_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_ele_reg.loc[pac_ele_reg.isna()] = ratio_missing * pac_ele_reg.loc[~pac_ele_reg.isna()].mean()
 
     # replace pes with PAC electricity demand
     p_set_ele = pac_ele_reg * 1e6 / nhours
@@ -3639,13 +3675,17 @@ if __name__ == "__main__":
 
     # get regional distributed pes demand and nationally distributed PAC demand per sector
     pac_ele_nat = pd.concat([pac_ele_buil, pac_ele_ind], axis=1).sum(axis=1)
-    pes_ele_reg = n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].sum().to_frame() / 1e6
+    pes_ele_reg = n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"].sum() / 1e6
 
     # scale and distribute
-    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg, pop_layout)
+    pac_ele_reg = distribute_sce_demand_by_pes_layout(pac_ele_nat, pes_ele_reg.to_frame(), pop_layout)
+    # fill missing values
+    # calculate ratio of pypsa missing values to mean of rest
+    ratio_missing = pes_ele_reg.loc[pac_ele_reg.isna()] / pes_ele_reg.loc[~pac_ele_reg.isna()].mean()
+    # fill missing values according to calculated pypsa ratio
+    pac_ele_reg.loc[pac_ele_reg.isna()] = ratio_missing * pac_ele_reg.loc[~pac_ele_reg.isna()].mean()
+
     scale_factor = pac_ele_reg.div(pes_ele_reg[0])
-    # fill nan scale factors with 1.0
-    scale_factor.fillna(1.0, inplace=True)
 
     # update electricity demand to PAC data using regional scale factor
     n.loads_t.p_set.loc[:, n.loads.carrier == "electricity"] = \
