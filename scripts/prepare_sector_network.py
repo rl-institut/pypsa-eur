@@ -3546,7 +3546,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # list of technologies
         cap_techs = ["Fossil oil", "Fossil gas", "Fossil coal", "Nuclear",
                      "RES wind-onshore", "RES wind-offshore", "RES solar pv",
-                     "RES other hydroelectric"]
+                     "RES other solar csp", "RES other hydroelectric"]
         supply_dict = {ctry: pd.concat((pd.read_csv(
             input_path_cap + f"/capacities/{ctry}_supply_caps_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
@@ -3562,6 +3562,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "RES wind-onshore": "onwind",
                           "RES wind-offshore": "offwind",
                           "RES solar pv": "solar",
+                          "RES other solar csp": "solar",
                           "RES other hydroelectric": "hydro"}
         for ctry in countries_pac:
             supply_dict[ctry]["country"] = ctry
@@ -3573,6 +3574,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # set multiindex as country and carrier
         df.set_index(["country", "carrier"], inplace=True)
         df.index.names = ["country", "carrier"]
+        # group by carrier and sum to yield sum of elec and chp plant electricity production
+        df = df.groupby(["country", "carrier"]).sum()
 
         # add NaN rows for electrolysers + GB
         carr = ["electrolyser"] + list(df.index.get_level_values("carrier").unique())
