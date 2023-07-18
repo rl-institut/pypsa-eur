@@ -1425,7 +1425,6 @@ def add_land_transport(n, costs):
     gas_share = get(options["land_transport_gas_share"], investment_year)
 
     # total land transport demand for modelled countries
-    countries = snakemake.config["countries"]
     pac_ltr_ele = get_pac_demand_subsector(pac_dict["transport"],"Electricity")[str(investment_year)]
     pac_ltr_oil = get_pac_demand_subsector(pac_dict["transport"], "Liquid oil")[str(investment_year)] \
                   + get_pac_demand_subsector(pac_dict["transport"], "Liquid & Gas biofuel")[str(investment_year)] \
@@ -2462,7 +2461,7 @@ def add_industry(n, costs):
     nodes = pop_layout.index
     nhours = n.snapshot_weightings.generators.sum()
     nyears = nhours / 8760
-    countries = snakemake.config["countries"]
+    countries_pac = snakemake.config["countries_pac"]
 
     # 1e6 to convert TWh to MWh
     industrial_demand = (
@@ -2889,7 +2888,7 @@ def add_industry(n, costs):
         logger.warning(f"Changing aviation demand by {demand_factor*100-100:+.2f}%.")
 
     # get PAC aviation demand on liquid fuels (kerosene) and sum to one node
-    pac_avi_nat = get_pac_demand_subsector(pac_dict["transport"], "Aviation")[str(investment_year)].loc[countries]
+    pac_avi_nat = get_pac_demand_subsector(pac_dict["transport"], "Aviation")[str(investment_year)].loc[countries_pac]
     # distribute regionally
     all_aviation = ["total international aviation", "total domestic aviation"]
     pes_aviation = pop_weighted_energy_totals.loc[nodes, all_aviation].sum(axis=1)
@@ -3451,7 +3450,7 @@ def get_pac_demand_sector(sector: str) -> pd.DataFrame:
     @param sector: either 'industry', 'building', 'transport' or 'fossil_fuel'
     @return: pandas DataFrame with multiindex of country and subsectors
     """
-    countries = snakemake.config["countries"]
+    countries_pac = snakemake.config["countries_pac"]
     years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
 
     # import pac demand data; depending on sector filenames differ and are appended to each other for each sector
@@ -3461,33 +3460,33 @@ def get_pac_demand_sector(sector: str) -> pd.DataFrame:
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_enduse.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years].drop("District heating")), axis=0) for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years].drop("District heating")), axis=0) for ctry in countries_pac
                           }
     elif sector == "industry":
         sector_dict = {ctry: pd.concat((pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_sector.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries_pac
                           }
     elif sector == "transport":
         sector_dict = {ctry: pd.concat((pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_vector.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_subsector.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years]), axis=0) for ctry in countries_pac
                           }
     elif sector == "fossil_fuel":
         sector_dict = {ctry: pd.read_csv(
             snakemake.input.pac_demand_files + f"/{sector}/{ctry}_demand_ff.csv", decimal='.', delimiter=',',
-            index_col=0, skiprows=range(1,4)).fillna(0.0)[:-1][years] for ctry in countries
+            index_col=0, skiprows=range(1,4)).fillna(0.0)[:-1][years] for ctry in countries_pac
                        }
     else:
         raise Exception("Invalid sector information. Please enter either 'buildings', \
                     'industry', 'transport' or 'fossil_fuel'.")
 
     # exract country and subsector information in separate column to use as index later
-    for ctry in countries:
+    for ctry in countries_pac:
         sector_dict[ctry]["country"] = ctry
         sector_dict[ctry]["subsector"] = sector_dict[ctry].index.values
 
@@ -3539,6 +3538,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
+    countries_pac = snakemake.config["countries_pac"]
     years = np.array(snakemake.config["scenario"]["planning_horizons"]).astype(str)
 
     if indicator == "capacity":
@@ -3551,7 +3551,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
             input_path_cap + f"/capacities/{ctry}_supply_caps_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             input_path_cap + f"/capacities/{ctry}_supply_caps_res.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[cap_techs,:] for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[cap_techs,:] for ctry in countries_pac
                        }
 
         # exract country and subsector information in separate column to use as index later
@@ -3563,7 +3563,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "RES wind-offshore": "offwind",
                           "RES solar pv": "solar",
                           "RES other hydroelectric": "hydro"}
-        for ctry in countries:
+        for ctry in countries_pac:
             supply_dict[ctry]["country"] = ctry
             supply_dict[ctry]["carrier"] = supply_dict[ctry].index.values
             supply_dict[ctry].replace(csv_names_dict, inplace=True)
@@ -3576,7 +3576,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
         # add NaN rows for electrolysers + GB
         carr = ["electrolyser"] + list(df.index.get_level_values("carrier").unique())
-        ctrys = list(df.index.get_level_values("country").unique()) + ["GB"]
+        ctrys = list(df.index.get_level_values("country").unique()) + list(set(countries) - set(countries_pac))
         multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
         df = df.reindex(multi_idx).sort_index(level=0)
 
@@ -3589,7 +3589,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
             input_path_cap + f"/generation/{ctry}_supply_prod_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_res.csv", decimal='.', delimiter=',',
-            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[gen_techs,:] for ctry in countries
+            index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[gen_techs,:] for ctry in countries_pac
                        }
 
         # exract country and subsector information in separate column to use as index later
@@ -3601,7 +3601,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "CHP (gas ff)": "gas",
                           "RES hydroelectric": "hydro",
                           "Nuclear": "nuclear"}
-        for ctry in countries:
+        for ctry in countries_pac:
             supply_dict[ctry] *= 1e3  # conversion from TWH to GWh
             supply_dict[ctry]["country"] = ctry
             supply_dict[ctry]["carrier"] = supply_dict[ctry].index.values
@@ -3617,7 +3617,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
         # add NaN rows for GB
         carr = list(df.index.get_level_values("carrier").unique())
-        ctrys = list(df.index.get_level_values("country").unique()) + ["GB"]
+        ctrys = list(df.index.get_level_values("country").unique()) + list(set(countries) - set(countries_pac))
         multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
         df = df.reindex(multi_idx).sort_index(level=0)
 
