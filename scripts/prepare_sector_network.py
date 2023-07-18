@@ -3574,11 +3574,11 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         df.set_index(["country", "carrier"], inplace=True)
         df.index.names = ["country", "carrier"]
 
-        # add NaN rows for electrolysers
+        # add NaN rows for electrolysers + GB
         carr = ["electrolyser"] + list(df.index.get_level_values("carrier").unique())
-        ctrys = list(df.index.get_level_values("country").unique())
+        ctrys = list(df.index.get_level_values("country").unique()) + ["GB"]
         multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
-        df = df.reindex(multi_idx)
+        df = df.reindex(multi_idx).sort_index(level=0)
 
     elif indicator == "production":
         # import production in dictionary
@@ -3614,6 +3614,12 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         df.index.names = ["country", "carrier"]
         # group by carrier and sum to yield sum of elec and chp plant electricity production
         df = df.groupby(["country", "carrier"]).sum()
+
+        # add NaN rows for GB
+        carr = list(df.index.get_level_values("carrier").unique())
+        ctrys = list(df.index.get_level_values("country").unique()) + ["GB"]
+        multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
+        df = df.reindex(multi_idx).sort_index(level=0)
 
     # save to csv in stated output path and file name
     df.to_csv(output_path, index=True)
