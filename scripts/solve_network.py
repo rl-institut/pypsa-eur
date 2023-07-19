@@ -278,8 +278,6 @@ def add_CCL_constraints(n, config):
         config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
     agg_p_nom_min = (agg_p_nom_sce[target_year])
-    #agg_p_nom_min_mask = [False if str(value) =="nan" else True for value in agg_p_nom_min.values]
-    #mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
     minimum = xr.DataArray(agg_p_nom_min.fillna(0)).rename(dim_0="group")
 
 
@@ -344,14 +342,15 @@ def add_CCL_constraints(n, config):
     lhs = merge(exprs, join="outer")
     missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
     index = minimum.indexes["group"].drop(missing_index)
-    agg_p_nom_min_mask = [False if str(value) =="nan" else True for value in agg_p_nom_min.loc[lhs.indexes["group"]].values]
+    agg_p_nom_min_mask = pd.Series(index=index, data=[False if str(value) == "nan" else True for value in
+                          agg_p_nom_min.loc[index]])
     mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
             mask = mask
         )
-    print(n.model.constraints["agg_p_nom_min"])
+    #print(n.model.constraints["agg_p_nom_min"])
 
 
 def add_gen_constraints(n, config):
@@ -464,7 +463,7 @@ def add_gen_constraints(n, config):
             lhs.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
         )
 
-    print(n.model.constraints["agg_e_min"])
+    #print(n.model.constraints["agg_e_min"])
 
 
 
