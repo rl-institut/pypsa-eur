@@ -3696,6 +3696,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         df = df.reindex(multi_idx)
 
     # save to csv in stated output path and file name
+    df = df.rename({"pv": "solar"}) # rename pv to solar
     df.to_csv(output_path, index=True)
 
 if __name__ == "__main__":

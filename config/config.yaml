@@ -229,7 +229,7 @@ renewable:
     natura: true
     ship_threshold: 400
     max_depth: 50
-    min_shore_distance: 30000
+    min_shore_distance: 5000
     excluder_resolution: 200
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2

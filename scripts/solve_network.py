@@ -214,42 +214,6 @@ def prepare_network(n, solve_opts=None, config=None):
     return n
 
 
-def def_nominal_variables(n, c, attr):
-    """
-    Initializes variables for nominal capacities for a given component and a
-    given attribute.
-
-    Parameters
-    ----------
-    n : pypsa.Network
-    c : str
-        network component of which the nominal capacity should be defined
-    attr : str
-        name of the variable, e.g. 'p_nom'
-    """
-    if attr.startswith("p_nom"):
-        ext_i = n.get_extendable_i(c)
-    elif c=="Generator":
-        idx = n.df(c)[lambda ds: ds["p_nom_extendable"]].index
-        ext_i = idx.rename(f"{c}")
-    else:
-        idx = n.df(c).index
-        ext_i = idx.rename(f"{c}")
-
-    if ext_i.empty:
-        return
-    n.model.add_variables(coords=[ext_i], name=f"{c}-{attr}")
-
-
-def add_slack_variables(n):
-    # Define variables
-    for c, attr in lookup.query("nominal").index:
-        def_nominal_variables(n, c, attr)
-        n.model.add_constraints(
-            n.model[f"{c}-{attr}"] >= 0, name=f"{c}_{attr}"
-        )
-
-
 def add_CCL_constraints(n, config):
     """
     Add CCL (country & carrier limit) constraint to the network.
@@ -282,31 +246,20 @@ def add_CCL_constraints(n, config):
 
 
     logger.info("Adding generation capacity constraints per carrier and country")
-    args = [
-        ["Generator", "p_nom", "p_nom_slack_min_1", "p_nom_slack_min_2",
-         "bus", "carrier"],
-        ["Link", "p_nom", "p_nom_slack_min_1", "p_nom_slack_min_2",
-         "bus1", "carrier"],
-        ]
+    args = [["Generator", "p_nom", "bus", "carrier"],
+            ["Link", "p_nom", "bus1", "carrier"],]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "pv",
-                       "solar": "pv",
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
                        "ror": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
     exprs = []
 
     for arg in args:
-        c, attr1, attr2, attr3, column1, column2 = arg
-
+        c, attr1, column1, column2 = arg
         p_nom = n.model[f"{c}-{attr1}"]
-
-        slack_min_1 = n.model[f"{c}-{attr2}"]
-        slack_min_2 = n.model[f"{c}-{attr3}"]
         if c == "Generator":
-            n.generators['p_nom_slack_min_1_opt'] = np.nan
-            n.generators['p_nom_slack_min_2_opt'] = np.nan
             gens = n.generators.query("p_nom_extendable").rename_axis(
                 index="Generator-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
@@ -316,12 +269,7 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus="country")
-
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
         else:
-            n.links['p_nom_slack_min_1_opt'] = np.nan
-            n.links['p_nom_slack_min_2_opt'] = np.nan
             gens = n.links.query("p_nom_extendable").rename_axis(
                 index="Link-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
@@ -330,27 +278,43 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
-
 
         index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
-                lhs_slack_min_2.sel(group=index))
+        expr = lhs.sel(group=index)
         exprs.append(expr)
 
     lhs = merge(exprs, join="outer")
     missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
+    print(missing_index)
     index = minimum.indexes["group"].drop(missing_index)
+    n.components["Cntry_Crs"] = {'list_name':"cntry_crs",
+                             "description":"Container for all country carrier combinations",
+                             "type":np.nan,
+                             'attrs':["p_nom_slack_min_1_opt", "p_nom_slack_min_2_opt",
+                                        "p_slack_min_1_opt", "p_slack_min_2_opt"]}
+
+    n.cntry_crs = pd.DataFrame(index=index,
+    columns=["p_nom_slack_min_1_opt", "p_nom_slack_min_2_opt",
+             "p_slack_min_1_opt", "p_slack_min_2_opt"],
+             data=np.nan)
+    for attr in ["p_nom_slack_min_1", "p_nom_slack_min_2",
+                 "p_slack_min_1", "p_slack_min_2"]:
+        n.model.add_variables(
+            xr.DataArray(pd.Series(index=index, data=0),
+                         dims="group"), name=f"Cntry_Crs-{attr}")
+
+    slack_min_1 = n.model["Cntry_Crs-p_nom_slack_min_1"]
+    slack_min_2 = n.model["Cntry_Crs-p_nom_slack_min_2"]
     agg_p_nom_min_mask = pd.Series(index=index, data=[False if str(value) == "nan" else True for value in
                           agg_p_nom_min.loc[index]])
     mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
+            lhs.sel(group=index) + slack_min_1.sel(group=index)
+            - slack_min_2.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
             mask = mask
         )
-    #print(n.model.constraints["agg_p_nom_min"])
+    print(n.model.constraints["agg_p_nom_min"])
 
 
 def add_gen_constraints(n, config):
@@ -377,8 +341,8 @@ def add_gen_constraints(n, config):
     target_year = snakemake.wildcards.planning_horizons[-4:]
     t = n.snapshot_weightings.iloc[0, 0]
     costs = pd.read_csv("./data/costs_" + str(target_year) + ".csv")
+    costs.technology = costs.technology.replace("electrolysis", "Electrolysis")
     costs = costs.loc[costs.parameter == "efficiency"][["technology", "value"]].set_index("technology")
-
 
     agg_e_limits = pd.read_csv(
         config["electricity"]["agg_e_gen_limits"], index_col=[0, 1]
@@ -387,28 +351,21 @@ def add_gen_constraints(n, config):
     minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
 
     logger.info("Adding generation constraints per carrier and country")
-    args = [["Generator", "p", "p_slack_min_1", "p_slack_min_2", "bus", "carrier"],
-            ["Link", "p", "p_slack_min_1", "p_slack_min_2", "bus1", "carrier"]
-            ]
+    args = [["Generator", "p", "bus", "carrier"],
+            ["Link", "p", "bus1", "carrier"]]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
-                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "pv",
-                       "solar": "pv",
+                       'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
                        "ror": "hydro", "H2 Electrolysis": "electrolyser"}
                        #, "biomass": "biofuels"}
     exprs = []
 
     for arg in args:
-        c, attr1, attr2, attr3, column1, column2 = arg
+        c, attr1, column1, column2 = arg
         p = n.model[f"{c}-{attr1}"]
-        slack_min_1 = n.model[f"{c}-{attr2}"]
-        slack_min_2 = n.model[f"{c}-{attr3}"]
-
         if c == "Generator":
-            n.generators['p_slack_min_1_opt'] = np.nan
-            n.generators['p_slack_min_2_opt'] = np.nan
             gens = n.generators.query("p_nom_extendable").rename_axis(
                 index="Generator")
             # add efficiencies
@@ -426,12 +383,7 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator"])
             lhs = p.groupby(grouper).sum().rename(bus="country")
-
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus="country")
         else:
-            n.links['p_slack_min_1_opt'] = np.nan
-            n.links['p_slack_min_2_opt'] = np.nan
             gens = n.links.rename_axis(
                 index="Link")
             # add efficiencies
@@ -447,23 +399,23 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link"])
             lhs = p.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_1 = slack_min_1.groupby(grouper).sum().rename(bus1="country")
-            lhs_slack_min_2 = slack_min_2.groupby(grouper).sum().rename(bus1="country")
 
         index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = (lhs.sel(group=index) + lhs_slack_min_1.sel(group=index) -
-                lhs_slack_min_2.sel(group=index))
+        expr = lhs.sel(group=index)
         exprs.append(expr)
     lhs = merge(exprs, join="outer")
 
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+    slack_min_1 = n.model["Cntry_Crs-p_slack_min_1"]
+    slack_min_2 = n.model["Cntry_Crs-p_slack_min_2"]
 
     if not index.empty:
         n.model.add_constraints(
-            lhs.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
+            lhs.sel(group=index) + slack_min_1.sel(group=index)
+            - slack_min_2.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
         )
 
-    #print(n.model.constraints["agg_e_min"])
+    print(n.model.constraints["agg_e_min"])
 
 
 
@@ -785,9 +737,10 @@ def add_pipe_retrofit_constraint(n):
 def add_slacks_to_objective(n, snapshots):
     m = n.model
     objective = []
-    for c, attr in lookup.query("cost").index:
-        cost = 1e7
-        operation = m[f"{c}-{attr}"]
+    for attr in ["p_nom_slack_min_1", "p_nom_slack_min_2",
+                 "p_slack_min_1", "p_slack_min_2"]:
+        cost = 1e10
+        operation = m[f"Cntry_Crs-{attr}"]
         objective.append((operation * cost).sum())
     objective.append(m.objective)
     m.objective = merge(objective)
@@ -808,7 +761,6 @@ def extra_functionality(n, snapshots):
     if "SAFE" in opts and n.generators.p_nom_extendable.any():
         add_SAFE_constraints(n, config)
     if "CCL" in opts: # and n.generators.p_nom_extendable.any():
-        add_slack_variables(n)
         add_CCL_constraints(n, config)
         add_gen_constraints(n, config)
     reserve = config["electricity"].get("operational_reserve", {})
