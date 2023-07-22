@@ -247,14 +247,15 @@ def add_CCL_constraints(n, config):
 
     logger.info("Adding generation capacity constraints per carrier and country")
     args = [["Generator", "p_nom", "bus", "carrier"],
-            ["Link", "p_nom", "bus1", "carrier"],]
+            ["Link", "p_nom", "bus1", "carrier"],
+            ["StorageUnit", "p_nom", "bus", "carrier"],]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
-    exprs = []
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
+    exprs_dict = {}
 
     for arg in args:
         c, attr1, column1, column2 = arg
@@ -269,7 +270,9 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus="country")
-        else:
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "Link":
             gens = n.links.query("p_nom_extendable").rename_axis(
                 index="Link-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
@@ -278,10 +281,21 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "StorageUnit":
+            gens = n.storage_units.query("p_nom_extendable").rename_axis(
+                index="StorageUnit-ext")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["StorageUnit-ext"])
+            lhs = p_nom.groupby(grouper).sum().rename(bus="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
 
-        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = lhs.sel(group=index)
-        exprs.append(expr)
+    exprs = [exprs_dict["Generator"] + exprs_dict["StorageUnit"]]
+    exprs.append(exprs_dict["Link"])
 
     lhs = merge(exprs, join="outer")
     missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
@@ -352,15 +366,16 @@ def add_gen_constraints(n, config):
 
     logger.info("Adding generation constraints per carrier and country")
     args = [["Generator", "p", "bus", "carrier"],
-            ["Link", "p", "bus1", "carrier"]]
+            ["Link", "p", "bus1", "carrier"],
+            ["StorageUnit", "p_dispatch", "bus", "carrier"]]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}
                        #, "biomass": "biofuels"}
-    exprs = []
+    exprs_dict = {}
 
     for arg in args:
         c, attr1, column1, column2 = arg
@@ -383,7 +398,9 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator"])
             lhs = p.groupby(grouper).sum().rename(bus="country")
-        else:
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "Link":
             gens = n.links.rename_axis(
                 index="Link")
             # add efficiencies
@@ -399,10 +416,28 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link"])
             lhs = p.groupby(grouper).sum().rename(bus1="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "StorageUnit":
+            gens = n.storage_units.rename_axis(
+                index="StorageUnit")
+            # add efficiencies
+            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
+                    for gen in p.coords.indexes.variables.mapping["StorageUnit"].data]
+            factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
+                "StorageUnit"].data).rename_axis("StorageUnit", axis="index")
+            p = p.sum(dims="snapshot") * factor
 
-        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = lhs.sel(group=index)
-        exprs.append(expr)
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["StorageUnit"])
+            lhs = p.groupby(grouper).sum().rename(bus="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+
+    exprs = [exprs_dict["Generator"] + exprs_dict["StorageUnit"]]
+    exprs.append(exprs_dict["Link"])
     lhs = merge(exprs, join="outer")
 
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
@@ -799,6 +834,7 @@ def solve_network(n, config, opts="", **kwargs):
     # set p_nom_ext to True
     n.generators = n.generators.assign(p_nom_extendable=True)
     n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear', "H2 Electrolysis"]), 'p_nom_extendable'] = True
+    n.storage_units.loc[n.storage_units['carrier'].isin(['PHS', 'hydro']), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
