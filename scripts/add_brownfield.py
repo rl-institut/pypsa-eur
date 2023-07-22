@@ -63,14 +63,25 @@ def add_brownfield(n, n_p, year):
                 chp_heat[c.df.loc[chp_heat, attr + "_nom_opt"] < threshold_chp_heat],
             )
 
-        n_p.mremove(
-            c.name,
-            c.df.index[
-                c.df[attr + "_nom_extendable"]
-                & ~c.df.index.isin(chp_heat)
-                & (c.df[attr + "_nom_opt"] < threshold)
-            ],
-        )
+        if c.name=="Link":
+            n_p.mremove(
+                c.name,
+                c.df.index[
+                    c.df[attr + "_nom_extendable"]
+                    & ~c.df.index.isin(chp_heat)
+                    & (c.df[attr + "_nom_opt"] < threshold)
+                    & (c.df.tags != "sce")
+                ],
+            )
+        else:
+            n_p.mremove(
+                c.name,
+                c.df.index[
+                    c.df[attr + "_nom_extendable"]
+                    & ~c.df.index.isin(chp_heat)
+                    & (c.df[attr + "_nom_opt"] < threshold)
+                ],
+            )
 
         # copy over assets but fix their capacity
         c.df[attr + "_nom"] = c.df[attr + "_nom_opt"]

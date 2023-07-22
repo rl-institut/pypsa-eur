@@ -23,6 +23,7 @@ import pypsa
 import xarray as xr
 from _helpers import override_component_attrs, update_config_with_sector_opts
 from prepare_sector_network import cluster_heat_buses, define_spatial, prepare_costs
+from integrate_scenario_data import spatial_join_existing_powerplants
 
 cc = coco.CountryConverter()
 
@@ -592,7 +593,79 @@ def add_heating_capacities_installed_before_baseyear(
                 ],
             )
 
+def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
+    """
+    take sce capacity assumptions for nuclear, coal and lignite
+    """
 
+    sce_carrier = {"coal": "coal & lignite",
+                   "lignite": "coal & lignite",
+                   "nuclear": "nuclear",
+                   "oil": "oil",
+                   "gas": "gas"}
+
+    eu_carrier = {"coal": "coal",
+                  "lignite": "lignite",
+                  "nuclear": "uranium",
+                  "oil": "oil",
+                  "gas": "gas",}
+
+    pop_layout = pd.read_csv(pop_path, index_col=0)
+
+    # get scenario assumption for base year
+    agg_p_nom_sce = pd.read_csv(snakemake.config["electricity"]["agg_p_nom_limits"], index_col=[0])
+    agg_p_nom_base = agg_p_nom_sce[["carrier", str(base_year)]]
+
+    # import JRC powerplant dataframe containing installed capacities per region
+    ppls_in_regions = spatial_join_existing_powerplants(snakemake.input.existing_ppls,
+                                                        snakemake.input.regions_onshore)
+
+    # get installed capacities per carrier
+    for carrier in ["nuclear", "lignite", "coal", "oil"]:
+
+        if carrier in {"lignite", "coal"}:
+            carrier_grp = "coal|lignite"
+            ppl_p_nom_reg = ppls_in_regions[ppls_in_regions.carrier.str.contains(carrier_grp)]
+        else:
+            ppl_p_nom_reg = ppls_in_regions[ppls_in_regions.carrier.str.contains(carrier)]
+
+        p_nom_sce_nat = agg_p_nom_base[agg_p_nom_base.carrier == sce_carrier[carrier]][str(base_year)]
+
+        # identify missing entries
+        missing_cty = np.setdiff1d(p_nom_sce_nat.index.values, ppl_p_nom_reg.cty.unique())
+        #missing_cty = np.setdiff1d(p_nom_sce_nat.dropna().index.values, ppl_p_nom_reg.cty.unique())
+        if len(missing_cty) > 0:
+            missing_rows = pop_layout[pop_layout.ct.str.contains('|'.join(missing_cty))][["ct", "fraction"]].rename(columns={"ct":"cty"})
+            missing_rows["carrier"], missing_rows["p_nom"] = carrier, 0
+
+        # derive installed fraction per region
+        ppl_p_nom_reg['fraction'] = ppl_p_nom_reg.groupby("cty")["p_nom"].transform(lambda x: x / x.sum())
+        ppl_p_nom_reg = ppl_p_nom_reg[ppl_p_nom_reg.carrier == carrier]
+        # concat
+        if len(missing_cty) > 0:
+            ppl_p_nom_reg = pd.concat([ppl_p_nom_reg, missing_rows], axis=0)
+
+        # join with scenario's installed capacities on national level to get regional values
+        conv_p_nom_sce = ppl_p_nom_reg.cty.map(p_nom_sce_nat).mul(ppl_p_nom_reg.fraction).fillna(0)
+        # remove pypsa-eur assumptions
+        n.links = n.links[(n.links.carrier!=carrier) |
+                          (n.links.index.str.contains("EU"))]
+        # add sce assumptions for installed capacities per region
+        n.madd("Link",
+               conv_p_nom_sce.index,
+               suffix= " " + carrier,
+               bus0="EU " + eu_carrier[carrier],
+               bus1=conv_p_nom_sce.index,
+               bus2="co2 atmosphere",
+               carrier=carrier,
+               build_year=base_year,
+               lifetime=100,
+               marginal_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'VOM'], #NB: VOM is per MWel
+               capital_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'fixed'], #NB: fixed cost is per MWel
+               p_nom=conv_p_nom_sce/costs.at[carrier,'efficiency'],
+               efficiency=costs.at[carrier,'efficiency'],
+               efficiency2=costs.at[carrier,'CO2 intensity'],
+               tags="sce")
 # %%
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -637,6 +710,9 @@ if __name__ == "__main__":
     add_power_capacities_installed_before_baseyear(
         n, grouping_years_power, costs, baseyear
     )
+
+    add_existing_sce_capacities(n, baseyear, snakemake.config["electricity"]["agg_p_nom_limits"],
+                                snakemake.input.clustered_pop_layout, costs)
 
     if "H" in opts:
         time_dep_hp_cop = options["time_dep_hp_cop"]

@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "" # use this to keep track of runs with different settings
+  name: "pac2_0" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -25,7 +25,7 @@ scenario:
   - v1.0
 #  - v1.5
   clusters:  # number of nodes in Europe, any integer between 37 (1 node per country-zone) and several hundred
-  - 30
+  - 50
 #  - 128
 #  - 256
 #  - 512
@@ -33,7 +33,7 @@ scenario:
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - 25H-T-H-B-I-A-dist1
+  - 24H-T-H-B-I-A-dist1-CCL
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -51,6 +51,8 @@ scenario:
   # cb40ex0 distributes a carbon budget of 40 GtCO2 following an exponential
   # decay with initial growth rate 0
   planning_horizons: # investment years for myopic and perfect; for overnight, year of cost assumptions can be different and is defined under 'costs'
+  - 2030
+  - 2040
   - 2050
   # for example, set to
   # - 2020
@@ -91,9 +93,9 @@ co2_budget:
   2025: 0.4748 # 2211.7 / 4658.2
   2030: 0.2753 # 1282.2 / 4658.2
   2035: 0.1111 # 517.7 / 4658.2
-  2040: -0,0124 # -57.9 / 4658.2
-  2045: -0,0414 # -192.9 / 4658.2
-  2050: -0.0598 # -278.5 / 4658.2
+  2040: 0 # -0,0124 # -57.9 / 4658.2
+  2045: 0 # -0,0414 # -192.9 / 4658.2
+  2050: 0 # -0.0598 # -278.5 / 4658.2
 
 electricity:
   voltages: [220., 300., 380.]
