@@ -1,0 +1,13 @@
+component,variable,marginal_cost,nominal,handle_separately,cost
+Generator,p_nom_slack_min_1,False,True,False,True
+Generator,p_nom_slack_min_2,False,True,False,True
+Link,p_nom_slack_min_1,False,True,False,True
+Link,p_nom_slack_min_2,False,True,False,True
+StorageUnit,p_nom_slack_min_1,False,True,False,True
+StorageUnit,p_nom_slack_min_2,False,True,False,True
+Link,p_slack_min_1,False,True,False,True
+Link,p_slack_min_2,False,True,False,True
+Generator,p_slack_min_1,False,True,False,True
+Generator,p_slack_min_2,False,True,False,True
+StorageUnit,p_slack_min_1,False,True,False,True
+StorageUnit,p_slack_min_2,False,True,False,True
