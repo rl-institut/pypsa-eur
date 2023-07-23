@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-sce_name = 'Global Ambition'
+sce_name = 'Distributed Energy'
 
 def import_sce_data(file_path, sheet_name):
 
@@ -238,8 +238,29 @@ def build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path):
     df_gen = df.query(
         '''
         `Parameter` == 'Dispatch (GWh)' & \
-        `carrier` == ['hydro', 'gas', 'oil', 'coal & lignite', 'nuclear'] 
-        ''') # electrolyser
+        `carrier` == ['hydro', 'gas', 'oil', 'coal & lignite', 'nuclear']
+        ''')
+
+    # Electrolyser Generation
+
+    sheet_name = "H2 Generation"
+    df_gen_h2 = pd.read_excel(input_path_h2, sheet_name)
+
+    df_gen_h2 = df_gen_h2.query(
+        f'''
+        `Scenario` == '{sce_name}' & \
+        `Parameter` == 'Generation (GWh)' & \
+        `Climate Year` == '2009-01-01'
+        ''').apply(lambda x: x.str.lower() if x.name in ['Fuel'] else x) \
+        .rename(columns={"Fuel": "carrier", "Node 1": "Node"})
+
+    # add country column
+    df_gen_h2 = df_gen_h2[df_gen_h2.Node.str.contains(eu28_str)]
+    df_gen_h2["country"] = df_gen_h2.Node.str[:2]
+    df_gen_h2["country"] = df_gen_h2["country"].replace({'UK': "GB"})
+    df_gen_h2["carrier"] = "electrolyser"
+
+    df_gen = pd.concat([df_gen, df_gen_h2])
 
     df_agg_ppl_gens = pd.pivot_table(df_gen, values='Value', index=['country', 'carrier'],
                                      columns=['Year'], aggfunc=np.sum)
@@ -281,12 +302,12 @@ def build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path):
     carr = list(df_agg_caps.index.get_level_values("carrier").unique())
     ctys = list(df_agg_caps.index.get_level_values("country").unique())
     multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
-    df_agg_caps = df_agg_caps.reindex(multi_idx)
+    df_agg_caps = df_agg_caps.reindex(multi_idx).fillna(0)
 
-    carr = list(df_agg_ppl_gens.index.get_level_values("carrier").unique())
-    ctys = list(df_agg_ppl_gens.index.get_level_values("country").unique())
-    multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
-    df_agg_ppl_gens = df_agg_ppl_gens.reindex(multi_idx)
+    # carr = list(df_agg_ppl_gens.index.get_level_values("carrier").unique())
+    # ctys = list(df_agg_ppl_gens.index.get_level_values("country").unique())
+    # multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
+    # df_agg_ppl_gens = df_agg_ppl_gens.reindex(multi_idx)
 
     # export
     df_agg_caps.to_csv(output_path + "/agg_p_nom_sce.csv", index=True)

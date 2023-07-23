@@ -633,7 +633,8 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
         p_nom_sce_nat = agg_p_nom_base[agg_p_nom_base.carrier == sce_carrier[carrier]][str(base_year)]
 
         # identify missing entries
-        missing_cty = np.setdiff1d(p_nom_sce_nat.dropna().index.values, ppl_p_nom_reg.cty.unique())
+        #missing_cty = np.setdiff1d(p_nom_sce_nat.dropna().index.values, ppl_p_nom_reg.cty.unique())
+        missing_cty = np.setdiff1d(p_nom_sce_nat.index.values, ppl_p_nom_reg.cty.unique())
         if len(missing_cty) > 0:
             missing_rows = pop_layout[pop_layout.ct.str.contains('|'.join(missing_cty))][["ct", "fraction"]].rename(columns={"ct":"cty"})
             missing_rows["carrier"], missing_rows["p_nom"] = carrier, 0
