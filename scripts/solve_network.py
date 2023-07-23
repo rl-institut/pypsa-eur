@@ -831,9 +831,9 @@ def solve_network(n, config, opts="", **kwargs):
     n.config = config
     n.opts = opts
 
-    # set p_nom_ext to True
     n.generators = n.generators.assign(p_nom_extendable=True)
     n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear', "H2 Electrolysis"]), 'p_nom_extendable'] = True
+    n.storage_units.loc[n.storage_units['carrier'].isin(['PHS', 'hydro']), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
