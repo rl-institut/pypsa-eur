@@ -239,25 +239,23 @@ def add_CCL_constraints(n, config):
     target_year = snakemake.wildcards.planning_horizons[-4:]
 
     agg_p_nom_sce = pd.read_csv(
-        snakemake.input.agg_p_nom_limits, index_col=[0, 1]
+        config["electricity"]["agg_p_nom_limits"], index_col=[0, 1]
     )
     agg_p_nom_min = (agg_p_nom_sce[target_year])
     minimum = xr.DataArray(agg_p_nom_min.fillna(0)).rename(dim_0="group")
 
 
     logger.info("Adding generation capacity constraints per carrier and country")
-    args = [
-        ["Generator", "p_nom", "bus", "carrier"],
-        ["Link", "p_nom", "bus1", "carrier"],
-        ]
+    args = [["Generator", "p_nom", "bus", "carrier"],
+            ["Link", "p_nom", "bus1", "carrier"],
+            ["StorageUnit", "p_nom", "bus", "carrier"],]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}
-    #, "biomass": "biofuels"}
-    exprs = []
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
+    exprs_dict = {}
 
     for arg in args:
         c, attr1, column1, column2 = arg
@@ -272,7 +270,9 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus="country")
-        else:
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "Link":
             gens = n.links.query("p_nom_extendable").rename_axis(
                 index="Link-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
@@ -281,10 +281,21 @@ def add_CCL_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link-ext"])
             lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "StorageUnit":
+            gens = n.storage_units.query("p_nom_extendable").rename_axis(
+                index="StorageUnit-ext")
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["StorageUnit-ext"])
+            lhs = p_nom.groupby(grouper).sum().rename(bus="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
 
-        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = lhs.sel(group=index)
-        exprs.append(expr)
+    exprs = [exprs_dict["Generator"] + exprs_dict["StorageUnit"]]
+    exprs.append(exprs_dict["Link"])
 
     lhs = merge(exprs, join="outer")
     missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
@@ -308,15 +319,14 @@ def add_CCL_constraints(n, config):
 
     slack_min_1 = n.model["Cntry_Crs-p_nom_slack_min_1"]
     slack_min_2 = n.model["Cntry_Crs-p_nom_slack_min_2"]
-    agg_p_nom_min_mask = pd.Series(index=index, data=[False if str(value) == "nan"
-                                                      else True for value in
+    agg_p_nom_min_mask = pd.Series(index=index, data=[False if str(value) == "nan" else True for value in
                           agg_p_nom_min.loc[index]])
     mask = xr.DataArray(agg_p_nom_min_mask).rename(dim_0="group")
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) + slack_min_1.sel(group=index)
             - slack_min_2.sel(group=index) == minimum.loc[index], name="agg_p_nom_min",
-            mask=mask
+            mask = mask
         )
     print(n.model.constraints["agg_p_nom_min"])
 
@@ -349,30 +359,23 @@ def add_gen_constraints(n, config):
     costs = costs.loc[costs.parameter == "efficiency"][["technology", "value"]].set_index("technology")
 
     agg_e_limits = pd.read_csv(
-        snakemake.input.agg_e_gen_limits, index_col=[0, 1]
+        config["electricity"]["agg_e_gen_limits"], index_col=[0, 1]
     )
     agg_e_limits = (agg_e_limits[target_year]).fillna(0)*1000
     minimum = xr.DataArray(agg_e_limits).rename(dim_0="group")
-    # print(minimum)
-    # idx = minimum["group"].values
-    # print(idx)
-    # s2 = pd.Series(index=n.model.constraints["agg_p_nom_min"].indexes["group"],
-    #                data=0)
-    # print(s2)
-    # minimum = xr.DataArray(agg_e_limits.combine(s2, max)).rename(dim_0="group")
-    # print(minimum)
-    # print(a)
 
     logger.info("Adding generation constraints per carrier and country")
-    args = [["Generator", "p", "bus", "carrier"], ["Link", "p", "bus1", "carrier"]]
+    args = [["Generator", "p", "bus", "carrier"],
+            ["Link", "p", "bus1", "carrier"],
+            ["StorageUnit", "p_dispatch", "bus", "carrier"]]
 
     # group generator carriers onto scenario carrier
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "H2 Electrolysis": "electrolyser"}
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}
                        #, "biomass": "biofuels"}
-    exprs = []
+    exprs_dict = {}
 
     for arg in args:
         c, attr1, column1, column2 = arg
@@ -395,7 +398,9 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Generator"])
             lhs = p.groupby(grouper).sum().rename(bus="country")
-        else:
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "Link":
             gens = n.links.rename_axis(
                 index="Link")
             # add efficiencies
@@ -411,25 +416,38 @@ def add_gen_constraints(n, config):
             grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
                                    dims=["Link"])
             lhs = p.groupby(grouper).sum().rename(bus1="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+        elif c == "StorageUnit":
+            gens = n.storage_units.rename_axis(
+                index="StorageUnit")
+            # add efficiencies
+            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
+                    for gen in p.coords.indexes.variables.mapping["StorageUnit"].data]
+            factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
+                "StorageUnit"].data).rename_axis("StorageUnit", axis="index")
+            p = p.sum(dims="snapshot") * factor
 
-        index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-        expr = lhs.sel(group=index)
-        exprs.append(expr)
+            gens["carrier"] = gens.carrier.replace(carrier_grouper)
+            grouper = [gens.bus.map(n.buses.country), gens.carrier]
+            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                   dims=["StorageUnit"])
+            lhs = p.groupby(grouper).sum().rename(bus="country")
+            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+            exprs_dict[c] = lhs.sel(group=index)
+
+    exprs = [exprs_dict["Generator"] + exprs_dict["StorageUnit"]]
+    exprs.append(exprs_dict["Link"])
     lhs = merge(exprs, join="outer")
 
     index = minimum.indexes["group"].intersection(lhs.indexes["group"])
     slack_min_1 = n.model["Cntry_Crs-p_slack_min_1"]
     slack_min_2 = n.model["Cntry_Crs-p_slack_min_2"]
 
-    # agg_e_mask = pd.Series(index=index, data=[True if i in idx
-    #                                                   else False for i in index])
-    # mask = xr.DataArray(agg_e_mask).rename(dim_0="group")
-    # ToDo: append missing indices to minimum and lhs
     if not index.empty:
         n.model.add_constraints(
             lhs.sel(group=index) + slack_min_1.sel(group=index)
-            - slack_min_2.sel(group=index) == minimum.loc[index]/t, name="agg_e_min",
-            #mask=mask
+            - slack_min_2.sel(group=index) == minimum.loc[index]/t, name="agg_e_min"
         )
 
     print(n.model.constraints["agg_e_min"])
