@@ -3586,11 +3586,14 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # import production in dictionary
         # list of technologies to import
         gen_techs = ["Elec plant with coal (solid coal)", "CHP (solid coal)", "Elec plant with liquid (liquid ff)",
-                     "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear"]
+                     "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear",
+                     "Hydrogen"]
         supply_dict = {ctry: pd.concat((pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_res.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years],pd.read_csv(
+            input_path_cap + f"/generation/{ctry}_supply_prod_h2.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[gen_techs,:] for ctry in countries_pac
                        }
 
@@ -3602,7 +3605,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "Elec plant with gas (gas ff)": "gas",
                           "CHP (gas ff)": "gas",
                           "RES hydroelectric": "hydro",
-                          "Nuclear": "nuclear"}
+                          "Nuclear": "nuclear",
+                          "Hydrogen": "electrolyser"}
         for ctry in countries_pac:
             supply_dict[ctry] *= 1e3  # conversion from TWH to GWh
             supply_dict[ctry]["country"] = ctry
