@@ -330,6 +330,8 @@ def add_CCL_constraints(n, config):
         )
     print(n.model.constraints["agg_p_nom_min"])
 
+    # n.storage_units.loc["AT1 0 PHS", "p_nom_min"] = n.storage_units.loc["AT1 0 PHS", "p_nom"]
+
 
 def add_gen_constraints(n, config):
     """
@@ -422,11 +424,12 @@ def add_gen_constraints(n, config):
             gens = n.storage_units.rename_axis(
                 index="StorageUnit")
             # add efficiencies
-            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
-                    for gen in p.coords.indexes.variables.mapping["StorageUnit"].data]
-            factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
-                "StorageUnit"].data).rename_axis("StorageUnit", axis="index")
-            p = p.sum(dims="snapshot") * factor
+            # data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
+            #         for gen in p.coords.indexes.variables.mapping["StorageUnit"].data]
+            # # data = list(map(lambda x: x / 0.9, data))
+            # factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
+            #     "StorageUnit"].data).rename_axis("StorageUnit", axis="index")
+            p = p.sum(dims="snapshot") #* factor
 
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
             grouper = [gens.bus.map(n.buses.country), gens.carrier]
@@ -452,6 +455,7 @@ def add_gen_constraints(n, config):
 
     print(n.model.constraints["agg_e_min"])
 
+    # n.storage_units.loc[n.storage_units['carrier'].isin(['PHS', 'hydro']), 'p_nom_extendable'] = False
 
 
 def add_EQ_constraints(n, o, scaling=1e-1):
