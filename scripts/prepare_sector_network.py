@@ -3660,7 +3660,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     if indicator == "capacity":
         carriers = ["pv", "onwind", "offwind", "hydro"] #, "marinepower", "gth_csp"]
     elif indicator == "production":
-        carriers = ["nuclear", "oil", "gas", "coal_lignite", "electrolyser", "hydro"]
+        carriers = ["nuclear", "oil", "gas", "coal_lignite", "electrolyser", "hydro", "chp_gas", "chp_biomass"]
 
     # countries modelled and chosen years
     countries = snakemake.config["countries"]
@@ -3689,9 +3689,9 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df = df.sort_index(level=[0])
     df.index.names = ["country","carrier"]
 
-    # add NaN rows for conventionels
+    # add NaN rows for conventionals
     if indicator == "capacity":
-        carr = ["nuclear", "oil", "gas", "coal & lignite", "electrolyser"] + carriers
+        carr = ["nuclear", "oil", "gas", "coal & lignite", "electrolyser", "chp_gas", "chp_biomass"] + carriers
         ctys = list(df.index.get_level_values("country").unique())
         multi_idx = pd.MultiIndex.from_product([ctys, carr], names=['country', 'carrier'])
         df = df.reindex(multi_idx)
