@@ -280,7 +280,7 @@ if __name__ == "__main__":
     )
 
     attach_storageunits(n, costs, elec_config)
-    attach_gens(n, costs)
+    #attach_gens(n, costs)
     attach_stores(n, costs, elec_config)
     attach_hydrogen_pipelines(n, costs, elec_config)
 
