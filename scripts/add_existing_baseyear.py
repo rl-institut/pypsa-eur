@@ -660,6 +660,7 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
                carrier=carrier,
                build_year=base_year,
                lifetime=100,
+               p_nom_extendable=True,
                marginal_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'VOM'], #NB: VOM is per MWel
                capital_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'fixed'], #NB: fixed cost is per MWel
                p_nom=conv_p_nom_sce/costs.at[carrier,'efficiency'],
