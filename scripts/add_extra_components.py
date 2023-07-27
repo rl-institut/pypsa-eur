@@ -99,6 +99,41 @@ def attach_storageunits(n, costs, elec_opts):
         )
 
 
+def attach_gens(n, costs):
+    carriers = ["ror", "hydro", "PHS"]
+    buses_i = n.buses.index
+    for carrier in carriers:
+        if carrier == "ror":
+            n.madd(
+                "Generator",
+                buses_i,
+                " " + carrier,
+                bus=buses_i,
+                carrier=carrier,
+                p_nom_extendable=True,
+                efficiency=costs.at["ror", "efficiency"],
+                capital_cost=costs.at["ror", "capital_cost"],
+                build_year=0,
+                lifetime=100
+            )
+        elif carrier in ["PHS", "hydro"]:
+            n.madd(
+                "StorageUnit",
+                buses_i,
+                " " + carrier,
+                bus=buses_i,
+                carrier=carrier,
+                p_nom_extendable=True,
+                capital_cost=costs.at[carrier, "capital_cost"],
+                marginal_cost=costs.at[carrier, "marginal_cost"],
+                efficiency_store=costs.at[carrier, "efficiency"],
+                efficiency_dispatch=costs.at[carrier, "efficiency"],
+                cyclic_state_of_charge=True,
+                max_hours=0,
+                build_year=0,
+                lifetime=100
+            )
+
 def attach_stores(n, costs, elec_opts):
     carriers = elec_opts["extendable_carriers"]["Store"]
 
@@ -243,6 +278,7 @@ if __name__ == "__main__":
     )
 
     attach_storageunits(n, costs, elec_config)
+    attach_gens(n, costs)
     attach_stores(n, costs, elec_config)
     attach_hydrogen_pipelines(n, costs, elec_config)
 

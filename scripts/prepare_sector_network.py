@@ -3699,6 +3699,40 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df = df.rename({"pv": "solar"}) # rename pv to solar
     df.to_csv(output_path, index=True)
 
+def add_gens(n, costs, year):
+    carriers = ["coal", "lignite", "nuclear", "oil"]
+    buses_i = [bus for bus in n.buses.location.unique() if bus != "EU"]
+    for carrier in carriers:
+        eu_carrier = {"coal": "coal",
+                      "lignite": "lignite",
+                      "nuclear": "uranium",
+                      "oil": "oil",
+                      "gas": "gas",}
+        if carrier=="nuclear":
+            c = 0
+        else:
+            c=costs.at[eu_carrier[carrier], "CO2 intensity"]
+
+        n.madd(
+            "Link",
+            buses_i,
+            suffix= " " + carrier +"-"+year,
+            bus0="EU " + eu_carrier[carrier],
+            bus1=buses_i,
+            bus2="co2 atmosphere",
+            carrier=carrier,
+            build_year=year,
+            lifetime=100,
+            p_nom_extendable=True,
+            p_nom=0,
+            efficiency=costs.at[carrier, "efficiency"],
+            efficiency2=c,
+            marginal_cost=costs.at[carrier, "efficiency"]
+            * costs.at[carrier, "VOM"],  # NB: VOM is per MWel
+            capital_cost=costs.at[carrier, "efficiency"]
+            * costs.at[carrier, "fixed"],  # NB: fixed cost is per MWel
+        )
+
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
@@ -3779,6 +3813,8 @@ if __name__ == "__main__":
     add_co2_tracking(n, options)
 
     add_generation(n, costs)
+
+    add_gens(n, costs, str(investment_year))
 
     add_storage_and_grids(n, costs)
 

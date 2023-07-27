@@ -39,7 +39,8 @@ def add_build_year_to_new_assets(n, baseyear):
         year in which optimized assets are built
     """
     # Give assets with lifetimes and no build year the build year baseyear
-    for c in n.iterate_components(["Link", "Generator", "Store"]):
+    for c in n.iterate_components(["Link", "Generator", "Store",
+                                    "StorageUnit"]):
         assets = c.df.index[(c.df.lifetime != np.inf) & (c.df.build_year == 0)]
         c.df.loc[assets, "build_year"] = baseyear
 
@@ -660,6 +661,7 @@ def add_existing_sce_capacities(n, base_year, data_path, pop_path, costs):
                carrier=carrier,
                build_year=base_year,
                lifetime=100,
+               p_nom_extendable=True,
                marginal_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'VOM'], #NB: VOM is per MWel
                capital_cost=costs.at[carrier,'efficiency']*costs.at[carrier,'fixed'], #NB: fixed cost is per MWel
                p_nom=conv_p_nom_sce/costs.at[carrier,'efficiency'],
