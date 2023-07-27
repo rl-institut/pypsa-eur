@@ -255,51 +255,78 @@ def add_CCL_constraints(n, config):
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
                        "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
-    exprs_dict = {}
-
+    lhs_dict = {}
+    rhs_dict = {}
     for arg in args:
         c, attr1, column1, column2 = arg
         p_nom = n.model[f"{c}-{attr1}"]
         if c == "Generator":
-            gens = n.generators.query("p_nom_extendable").rename_axis(
-                index="Generator-ext")
-            gens["carrier"] = gens.carrier.replace(carrier_grouper)
-            gens.bus = [bus.replace(" low voltage", "") for bus in gens.bus]
-
-            grouper = [gens.bus.map(n.buses.country), gens.carrier]
-            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
-                                   dims=["Generator-ext"])
-            lhs = p_nom.groupby(grouper).sum().rename(bus="country")
-            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-            exprs_dict[c] = lhs.sel(group=index)
+            gens = n.generators.rename_axis(index="Generator-ext")
+            gens_ext = gens.query("p_nom_extendable")
+            gens_fix = gens.drop(index=gens_ext.index)
+            for gens, x in [(gens_ext, True), (gens_fix, False)]:
+                gens["carrier"] = gens.carrier.replace(carrier_grouper)
+                gens.bus = [bus.replace(" low voltage", "") for bus in gens.bus]
+                if x:
+                    grouper = [gens.bus.map(n.buses.country), gens.carrier]
+                    grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                           dims=["Generator-ext"])
+                    lhs = p_nom.groupby(grouper).sum().rename(bus="country")
+                    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+                    lhs_dict[c] = lhs.sel(group=index)
+                else:
+                    gens["country"] = gens.bus.map(n.buses.country)
+                    rhs_dict[c] = gens.groupby(by=["country", "carrier"])["p_nom"].sum()
         elif c == "Link":
-            gens = n.links.query("p_nom_extendable").rename_axis(
-                index="Link-ext")
-            gens["carrier"] = gens.carrier.replace(carrier_grouper)
-            gens["bus1"] = [bus.replace(" H2", "") for bus in gens["bus1"]]
-            grouper = [gens.bus1.map(n.buses.country), gens.carrier]
-            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
-                                   dims=["Link-ext"])
-            lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
-            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-            exprs_dict[c] = lhs.sel(group=index)
+            gens = n.links.rename_axis(index="Link-ext")
+            gens_ext = gens.query("p_nom_extendable")
+            gens_fix = gens.drop(index=gens_ext.index)
+            for gens, x in [(gens_ext, True), (gens_fix, False)]:
+                gens["carrier"] = gens.carrier.replace(carrier_grouper)
+                gens["bus1"] = [bus.replace(" H2", "") for bus in gens["bus1"]]
+                if x:
+                    grouper = [gens.bus1.map(n.buses.country), gens.carrier]
+                    grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                           dims=["Link-ext"])
+                    lhs = p_nom.groupby(grouper).sum().rename(bus1="country")
+                    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+                    lhs_dict[c] = lhs.sel(group=index)
+                else:
+                    gens["country"] = gens.bus1.map(n.buses.country)
+                    rhs_dict[c] = gens.groupby(by=["country", "carrier"])["p_nom"].sum()
         elif c == "StorageUnit":
-            gens = n.storage_units.query("p_nom_extendable").rename_axis(
-                index="StorageUnit-ext")
+            gens = n.storage_units.rename_axis(index="StorageUnit-ext")
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
-            grouper = [gens.bus.map(n.buses.country), gens.carrier]
-            grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
-                                   dims=["StorageUnit-ext"])
-            lhs = p_nom.groupby(grouper).sum().rename(bus="country")
-            index = minimum.indexes["group"].intersection(lhs.indexes["group"])
-            exprs_dict[c] = lhs.sel(group=index)
+            gens_ext = gens.query("p_nom_extendable")
+            gens_fix = gens.drop(index=gens_ext.index)
+            for gens, x in [(gens_ext, True), (gens_fix, False)]:
+                if x:
+                    grouper = [gens.bus.map(n.buses.country), gens.carrier]
+                    grouper = xr.DataArray(pd.MultiIndex.from_arrays(grouper),
+                                           dims=["StorageUnit-ext"])
+                    lhs = p_nom.groupby(grouper).sum().rename(bus="country")
+                    index = minimum.indexes["group"].intersection(lhs.indexes["group"])
+                    lhs_dict[c] = lhs.sel(group=index)
+                else:
+                    gens["country"] = gens.bus.map(n.buses.country)
+                    rhs_dict[c] = gens.groupby(by=["country", "carrier"])[
+                        "p_nom"].sum()
 
-    exprs = [exprs_dict["Generator"] + exprs_dict["StorageUnit"]]
-    exprs.append(exprs_dict["Link"])
-
-    lhs = merge(exprs, join="outer")
+    exprs_lhs = [lhs_dict["Generator"]+ lhs_dict["StorageUnit"]]
+    exprs_lhs.append(lhs_dict["Link"])
+    lhs = merge(exprs_lhs, join="outer")
     missing_index = minimum.indexes["group"].difference(lhs.indexes["group"])
     print(missing_index)
+    rhs = pd.DataFrame(rhs_dict["Generator"]).merge(pd.DataFrame(rhs_dict["StorageUnit"]), how="outer", left_index=True,
+                                            right_index=True).fillna(0)
+    rhs = pd.DataFrame(pd.concat([rhs["p_nom_x"]+rhs["p_nom_y"], rhs_dict["Link"]]))
+
+    minimum = agg_p_nom_sce[[target_year]].merge(rhs, how="left", left_index=True,
+                                            right_index=True).fillna(0)
+    print(minimum)
+
+    minimum = xr.DataArray(minimum[target_year]-minimum[0]).rename(dim_0="group")
+
     index = minimum.indexes["group"].drop(missing_index)
     n.components["Cntry_Crs"] = {'list_name':"cntry_crs",
                              "description":"Container for all country carrier combinations",
@@ -381,8 +408,7 @@ def add_gen_constraints(n, config):
         c, attr1, column1, column2 = arg
         p = n.model[f"{c}-{attr1}"]
         if c == "Generator":
-            gens = n.generators.query("p_nom_extendable").rename_axis(
-                index="Generator")
+            gens = n.generators.rename_axis(index="Generator")
             # add efficiencies
             data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
             for gen in p.coords.indexes.variables.mapping["Generator"].data]
@@ -401,8 +427,7 @@ def add_gen_constraints(n, config):
             index = minimum.indexes["group"].intersection(lhs.indexes["group"])
             exprs_dict[c] = lhs.sel(group=index)
         elif c == "Link":
-            gens = n.links.rename_axis(
-                index="Link")
+            gens = n.links.rename_axis(index="Link")
             # add efficiencies
             data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
                     for gen in p.coords.indexes.variables.mapping["Link"].data]
@@ -419,14 +444,8 @@ def add_gen_constraints(n, config):
             index = minimum.indexes["group"].intersection(lhs.indexes["group"])
             exprs_dict[c] = lhs.sel(group=index)
         elif c == "StorageUnit":
-            gens = n.storage_units.rename_axis(
-                index="StorageUnit")
-            # add efficiencies
-            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
-                    for gen in p.coords.indexes.variables.mapping["StorageUnit"].data]
-            factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
-                "StorageUnit"].data).rename_axis("StorageUnit", axis="index")
-            p = p.sum(dims="snapshot") * factor
+            gens = n.storage_units.rename_axis(index="StorageUnit")
+            p = p.sum(dims="snapshot")
 
             gens["carrier"] = gens.carrier.replace(carrier_grouper)
             grouper = [gens.bus.map(n.buses.country), gens.carrier]
@@ -807,11 +826,12 @@ def extra_functionality(n, snapshots):
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
     add_slacks_to_objective(n, snapshots)
-    with open("../../../results/agg_p_nom_min.txt", "w") as text_file:
+    target_year = snakemake.wildcards.planning_horizons[-4:]
+    with open("../../../results/agg_p_nom_min_"+str(target_year)+".txt", "w") as text_file:
         for index in n.model.constraints['agg_p_nom_min'].indexes["group"]:
             text_file.write(str(n.model.constraints['agg_p_nom_min'].sel(group=[index])))
 
-    with open("../../../results/agg_e_min.txt", "w") as text_file:
+    with open("../../../results/agg_e_min_"+str(target_year)+".txt", "w") as text_file:
         for index in n.model.constraints['agg_e_min'].indexes["group"]:
             text_file.write(str(n.model.constraints['agg_e_min'].sel(group=[index])))
 
@@ -830,10 +850,6 @@ def solve_network(n, config, opts="", **kwargs):
     # add to network for extra_functionality
     n.config = config
     n.opts = opts
-
-    n.generators = n.generators.assign(p_nom_extendable=True)
-    n.links.loc[n.links['carrier'].isin(['coal','lignite', 'OCGT', 'CCGT', 'oil', 'nuclear', "H2 Electrolysis"]), 'p_nom_extendable'] = True
-    n.storage_units.loc[n.storage_units['carrier'].isin(['PHS', 'hydro']), 'p_nom_extendable'] = True
 
     skip_iterations = cf_solving.get("skip_iterations", False)
     if not n.lines.s_nom_extendable.any():
@@ -911,7 +927,8 @@ if __name__ == "__main__":
         n = solve_network(
             n, config=snakemake.config, opts=opts, log_fn=snakemake.log.solver
         )
-
+        target_year = snakemake.wildcards.planning_horizons[-4:]
+        n.cntry_crs.to_csv("../../../results/slacks_"+str(target_year)+".csv")
         n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
         n.export_to_netcdf(snakemake.output[0])
 

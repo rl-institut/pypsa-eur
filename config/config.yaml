@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "tyndp_de" # use this to keep track of runs with different settings
+  name: "tyndp_ga" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -82,24 +82,26 @@ enable:
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
 # this is also over-ridden if cb is set in sector_opts
-# derived from /data/scenario/tyndp/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 39
+# derived from /data/scenario/tyndp/Updated-TYNDP-2022-Scenario-Report-Data_Figures.xlsx, sheet 40 without LULUCF
+# and https://www.eea.europa.eu/data-and-maps/data/data-viewers/greenhouse-gases-viewer for 1990 value of EU27 countries
+# net emissions without LULUCF
 co2_budget:
   tyndp_de:
-    2020: 0.7439
-    2025: 0.6555
-    2030: 0.4501
-    2035: 0.3243
-    2040: 0.1988
-    2045: 0.0995
-    2050: 0.0000
+    2020: 0.8015 # (3476.6 + 257.1) / 4658.2
+    2025: 0.7122 # (3064.4 + 253.0) / 4658.2
+    2030: 0.5068 # (2103.7 + 257.0) / 4658.2
+    2035: 0.3897 # (1516.2 + 299.0) / 4658.2
+    2040: 0.2726 # (928.8 + 341.0) / 4658.2
+    2045: 0.1820 # (464.6 + 383.0) / 4658.2
+    2050: 0.0913 # (0.4 + 425.4) / 4658.2
   tyndp_ga:
-    2020: 0.7439
-    2025: 0.652
-    2030: 0.4518
-    2035: 0.2899
-    2040: 0.128
-    2045: 0.0015
-    2050: 0.0000 # -0.1249
+    2020: 0.8015 # (3476.6 + 257.1) / 4658.2
+    2025: 0.7085 # (3027.3 + 253.0) / 4658.2
+    2030: 0.5085 # (2111.6 + 257.0) / 4658.2
+    2035: 0.3550 # (1354.8 + 299.0) / 4658.2
+    2040: 0.2016 # (598.1 + 341.0) / 4658.2
+    2045: 0.0838 # (7.2 + 383.0) / 4658.2
+    2050: 0.0000 # (-583.7 + 425.0) / 4658.2 = -0.0341
 
 electricity:
   voltages: [220., 300., 380.]
@@ -322,7 +324,7 @@ energy:
   energy_totals_year: 2011
   base_emissions_year: 1990
   eurostat_report_year: 2016
-  emissions: CO2 # "CO2" or "All greenhouse gases - (CO2 equivalent)"
+  emissions: All greenhouse gases - (CO2 equivalent) # "CO2" or "All greenhouse gases - (CO2 equivalent)"
 
 biomass:
   year: 2030
@@ -423,7 +425,7 @@ sector:
   MWh_MeOH_per_MWh_H2: 0.8787 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   MWh_MeOH_per_tCO2: 4.0321 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   MWh_MeOH_per_MWh_e: 3.6907 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
-  shipping_hydrogen_liquefaction: false # whether to consider liquefaction costs for shipping H2 demands
+  shipping_hydrogen_liquefaction: true # whether to consider liquefaction costs for shipping H2 demands
   shipping_hydrogen_share: true
     # 2020: 0
     # 2030: 0
@@ -512,7 +514,7 @@ sector:
   electricity_distribution_grid_cost_factor: 1.0  #multiplies cost in data/costs.csv
   electricity_grid_connection: true  # only applies to onshore wind and utility PV
   H2_network: true
-  gas_network: false
+  gas_network: true
   H2_retrofit: false  # if set to True existing gas pipes can be retrofitted to H2 pipes
   # according to hydrogen backbone strategy (April, 2020) p.15
   # https://gasforclimate2050.eu/wp-content/uploads/2020/07/2020_European-Hydrogen-Backbone_Report.pdf
@@ -521,8 +523,8 @@ sector:
   gas_network_connectivity_upgrade: 1 # https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.connectivity.edge_augmentation.k_edge_augmentation.html#networkx.algorithms.connectivity.edge_augmentation.k_edge_augmentation
   gas_distribution_grid: true
   gas_distribution_grid_cost_factor: 1.0  #multiplies cost in data/costs.csv
-  biomass_spatial: false  # regionally resolve biomass (e.g. potentials)
-  biomass_transport: false  # allow transport of solid biomass between nodes
+  biomass_spatial: true  # regionally resolve biomass (e.g. potentials)
+  biomass_transport: true  # allow transport of solid biomass between nodes
   conventional_generation: # generator : carrier
     OCGT: gas
   biomass_to_liquid: false
