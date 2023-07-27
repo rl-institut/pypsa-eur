@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-sce_name = 'Global Ambition'
+sce_name = 'Distributed Energy'
 
 def import_sce_data(file_path, sheet_name):
 

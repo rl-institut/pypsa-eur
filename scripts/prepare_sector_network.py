@@ -3511,7 +3511,6 @@ def add_gens(n, costs, year):
             c = 0
         else:
             c=costs.at[eu_carrier[carrier], "CO2 intensity"]
-
         n.madd(
             "Link",
             buses_i,
@@ -3531,6 +3530,38 @@ def add_gens(n, costs, year):
             capital_cost=costs.at[carrier, "efficiency"]
             * costs.at[carrier, "fixed"],  # NB: fixed cost is per MWel
         )
+    carriers = ["ror", "hydro", "PHS"]
+    for carrier in carriers:
+        if carrier == "ror":
+            n.madd(
+                "Generator",
+                buses_i,
+                " " + carrier +"-"+year,
+                bus=buses_i,
+                carrier=carrier,
+                p_nom_extendable=True,
+                efficiency=costs.at["ror", "efficiency"],
+                capital_cost=299140.224929,
+                build_year=year,
+                lifetime=100
+            )
+        elif carrier in ["PHS", "hydro"]:
+            n.madd(
+                "StorageUnit",
+                buses_i,
+                " " + carrier+"-"+year,
+                bus=buses_i,
+                carrier=carrier,
+                p_nom_extendable=True,
+                capital_cost=177345.216619,#costs.at[carrier, "capital_cost"],
+                #marginal_cost=costs.at[carrier, "marginal_cost"],
+                efficiency_store=costs.at[carrier, "efficiency"],
+                efficiency_dispatch=costs.at[carrier, "efficiency"],
+                cyclic_state_of_charge=True,
+                max_hours=0,
+                build_year=year,
+                lifetime=100
+            )
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
