@@ -103,6 +103,8 @@ def attach_gens(n, costs):
     carriers = ["ror", "hydro", "PHS"]
     buses_i = n.buses.index
     for carrier in carriers:
+        print(carrier)
+        print(buses_i)
         if carrier == "ror":
             n.madd(
                 "Generator",
@@ -278,7 +280,7 @@ if __name__ == "__main__":
     )
 
     attach_storageunits(n, costs, elec_config)
-    attach_gens(n, costs)
+    #attach_gens(n, costs)
     attach_stores(n, costs, elec_config)
     attach_hydrogen_pipelines(n, costs, elec_config)
 
