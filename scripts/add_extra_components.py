@@ -108,7 +108,7 @@ def attach_gens(n, costs):
             n.madd(
                 "Generator",
                 buses_i,
-                " OPF " + carrier,
+                " " + carrier,
                 bus=buses_i,
                 carrier=carrier,
                 p_nom_extendable=True,
@@ -121,7 +121,7 @@ def attach_gens(n, costs):
             n.madd(
                 "StorageUnit",
                 buses_i,
-                " OPF " + carrier,
+                " " + carrier,
                 bus=buses_i,
                 carrier=carrier,
                 p_nom_extendable=True,

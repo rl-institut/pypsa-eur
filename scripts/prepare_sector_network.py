@@ -3633,7 +3633,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
 
 def add_gens(n, costs, year):
     carriers = ["coal", "lignite", "nuclear", "oil"]
-    buses_i = n.buses.index
+    buses_i = [bus for bus in n.buses.location.unique() if bus != "EU"]
+
     for carrier in carriers:
         eu_carrier = {"coal": "coal",
                       "lignite": "lignite",
@@ -3648,7 +3649,7 @@ def add_gens(n, costs, year):
         n.madd(
             "Link",
             buses_i,
-            suffix= " OPF " + carrier +"-"+year,
+            suffix= " " + carrier +"-"+year,
             bus0="EU " + eu_carrier[carrier],
             bus1=buses_i,
             bus2="co2 atmosphere",

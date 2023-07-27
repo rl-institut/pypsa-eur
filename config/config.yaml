@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "pac2_0_new" # use this to keep track of runs with different settings
+  name: "pac2_0_newOF" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -33,7 +33,7 @@ scenario:
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - 25H-T-H-B-I-A-dist1-CCL
+  - 24H-T-H-B-I-A-dist1-CCL
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -320,7 +320,7 @@ energy:
   energy_totals_year: 2011
   base_emissions_year: 1990
   eurostat_report_year: 2016
-  emissions: CO2 # "CO2" or "All greenhouse gases - (CO2 equivalent)"
+  emissions: All greenhouse gases - (CO2 equivalent) # "CO2" or "All greenhouse gases - (CO2 equivalent)"
 
 biomass:
   year: 2030
@@ -421,7 +421,7 @@ sector:
   MWh_MeOH_per_MWh_H2: 0.8787 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   MWh_MeOH_per_tCO2: 4.0321 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
   MWh_MeOH_per_MWh_e: 3.6907 # in LHV, source: DECHEMA (2017): Low carbon energy and feedstock for the European chemical industry , pg. 64.
-  shipping_hydrogen_liquefaction: false # whether to consider liquefaction costs for shipping H2 demands
+  shipping_hydrogen_liquefaction: true # whether to consider liquefaction costs for shipping H2 demands
   shipping_hydrogen_share:
     2020: 0
     2030: 0
@@ -594,16 +594,16 @@ costs:
   # Marginal and capital costs can be overwritten
   # capital_cost:
   #   onwind: 500
-  marginal_cost:
-    solar: 0.01
-    onwind: 0.015
-    offwind: 0.015
-    hydro: 0.
-    H2: 0.
-    electrolysis: 0.
-    fuel cell: 0.
-    battery: 0.
-    battery inverter: 0.
+#  marginal_cost:
+#    solar: 0.01
+#    onwind: 0.015
+#    offwind: 0.015
+#    hydro: 0.
+#    H2: 0.
+#    electrolysis: 0.
+#    fuel cell: 0.
+#    battery: 0.
+#    battery inverter: 0.
   emission_prices: # in currency per tonne emission, only used with the option Ep
     co2: 0.
 
