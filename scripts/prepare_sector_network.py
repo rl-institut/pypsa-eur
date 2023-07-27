@@ -3586,11 +3586,14 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # import production in dictionary
         # list of technologies to import
         gen_techs = ["Elec plant with coal (solid coal)", "CHP (solid coal)", "Elec plant with liquid (liquid ff)",
-                     "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear"]
+                     "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear",
+                     "Hydrogen"]
         supply_dict = {ctry: pd.concat((pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_res.csv", decimal='.', delimiter=',',
+            index_col=0).fillna(0.0)[:-1][years],pd.read_csv(
+            input_path_cap + f"/generation/{ctry}_supply_prod_h2.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years]), axis=0).loc[gen_techs,:] for ctry in countries_pac
                        }
 
@@ -3602,7 +3605,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "Elec plant with gas (gas ff)": "gas",
                           "CHP (gas ff)": "gas",
                           "RES hydroelectric": "hydro",
-                          "Nuclear": "nuclear"}
+                          "Nuclear": "nuclear",
+                          "Hydrogen": "electrolyser"}
         for ctry in countries_pac:
             supply_dict[ctry] *= 1e3  # conversion from TWH to GWh
             supply_dict[ctry]["country"] = ctry
@@ -3626,6 +3630,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     # save to csv in stated output path and file name
     df.to_csv(output_path, index=True)
 
+<<<<<<< HEAD
 def add_gens(n, costs, year):
     carriers = ["coal", "lignite", "nuclear", "oil"]
     buses_i = n.buses.index
@@ -3659,6 +3664,71 @@ def add_gens(n, costs, year):
             capital_cost=costs.at[carrier, "efficiency"]
             * costs.at[carrier, "fixed"],  # NB: fixed cost is per MWel
         )
+=======
+def scale_district_heating_dem(n, year):
+
+    # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
+
+    # get pac share for modelled countries and pes demands
+    share = calculate_pac_dh_share(year)
+    pes_heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
+    pes_heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                                             ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
+    pes_heat_central = n.loads_t.p_set.loc[:, n.loads.carrier == "urban central heat"].sum().sum()
+
+    # calculate scaling factors in relation to dh and non dh shares from pes
+    share_pes = pes_heat_central / pes_heat_total
+    scale_factor_not_dh = (1 - share) / (1- share_pes)
+    scale_factor_dh = share / share_pes
+
+    # convert scaling factor to array that can be multiplied with matrix
+    scale_factor_not_dh_array = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) & ~(
+    (n.loads.carrier.str.contains("urban central heat")))].columns.str[:2].map(scale_factor_not_dh).values
+    scale_factor_dh_array = n.loads_t.p_set.loc[:, n.loads.carrier == "urban central heat"].columns.str[:2].map(
+        scale_factor_dh).values
+
+    # fill missing values with scale factor of 1.0 --> keep here DH share of pypsa
+    scale_factor_not_dh_array = np.nan_to_num(scale_factor_not_dh_array, nan=1.0)
+    scale_factor_dh_array = np.nan_to_num(scale_factor_dh_array, nan=1.0)
+
+    # scale demands
+    n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+                            ~((n.loads.carrier.str.contains("urban central heat")))] *= scale_factor_not_dh_array
+    n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"] *= scale_factor_dh_array
+
+    # print("district heating share is scaled up by; ", scale_factor_dh)
+
+def calculate_pac_dh_share(investment_year):
+    """
+    calculates the dh share of clever heating demand data.
+    paramters:
+    @param clever_dict: input dictionary of CLEVER data set
+    @param year: investment year
+    return:
+    @return: dh share per country
+
+    Note:   while residential total heating demand can be derived from space and water heating demands,
+            the same can not be done for services subsector. The approach here is to subtract non-heating
+            electricity demand from total energy demand to yield total heating demand. non-heating electricity
+            demand is approximated by applying the same fraction of heating/non-heating electricity demand as for
+            residential subsector.
+    """
+    # calculate DH share from network heat relative to total heat demand for all modelled countries
+    countries_pac = snakemake.config["countries_pac"]
+    # total DH demand from residential and services
+    pac_dh_total = get_pac_demand_subsector(pac_dict["buildings"], "District heating")[str(investment_year)][countries_pac]
+    # total heating demand
+    pac_heating_total = get_pac_demand_subsector(pac_dict["buildings"], "District heating")[str(investment_year)][
+                            countries_pac] + \
+                        get_pac_demand_subsector(pac_dict["buildings"], "Heating")[str(investment_year)][
+                            countries_pac] + \
+                        get_pac_demand_subsector(pac_dict["buildings"], "Hotwater")[str(investment_year)][countries_pac]
+
+    # calculate DH share as total DH demand divided by total heating demand
+    dh_share = pac_dh_total / pac_heating_total
+
+    return dh_share
+>>>>>>> 24222517a479c7f7544316198e604e8db062b54e
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -3774,6 +3844,8 @@ if __name__ == "__main__":
 
     if "H" in opts:
         add_heat(n, costs)
+
+        scale_district_heating_dem(n, investment_year)
 
     if "B" in opts:
         add_biomass(n, costs)
