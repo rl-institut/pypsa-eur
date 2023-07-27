@@ -3664,7 +3664,7 @@ def add_gens(n, costs, year):
             capital_cost=costs.at[carrier, "efficiency"]
             * costs.at[carrier, "fixed"],  # NB: fixed cost is per MWel
         )
-=======
+
 def scale_district_heating_dem(n, year):
 
     # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
@@ -3728,7 +3728,7 @@ def calculate_pac_dh_share(investment_year):
     dh_share = pac_dh_total / pac_heating_total
 
     return dh_share
->>>>>>> 24222517a479c7f7544316198e604e8db062b54e
+
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
