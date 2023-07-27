@@ -3583,14 +3583,15 @@ def scale_district_heating_dem(n, year):
 
     # get CLEVER share for modelled countries and pes demands
     share = calculate_clever_dh_share(clever_dict, year)
-    heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
-    heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
+    pes_heat_total = n.loads_t.p_set.loc[:, n.loads.carrier.str.contains("heat")].sum().sum()
+    pes_heat_decentral = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) &
                                              ~((n.loads.carrier.str.contains("urban central heat")))].sum().sum()
-    heat_dh_total = share * heat_total
+    pes_heat_central = n.loads_t.p_set.loc[:, n.loads.carrier == "urban central heat"].sum().sum()
 
-    # calculate scaling factors
-    scale_factor_not_dh = (heat_total - heat_dh_total) / heat_decentral
-    scale_factor_dh = heat_dh_total / n.loads_t.p_set.loc[:, n.loads.carrier=="urban central heat"].sum().sum()
+    # calculate scaling factors in relation to dh and non dh shares from pes
+    share_pes = pes_heat_central / pes_heat_total
+    scale_factor_not_dh = (1 - share) / (1 - share_pes)
+    scale_factor_dh = share / share_pes
 
     # convert scaling factor to array that can be multiplied with matrix
     scale_factor_not_dh_array = n.loads_t.p_set.loc[:, (n.loads.carrier.str.contains("heat")) & ~(
