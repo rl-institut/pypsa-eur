@@ -3630,7 +3630,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     # save to csv in stated output path and file name
     df.to_csv(output_path, index=True)
 
-<<<<<<< HEAD
+
 def add_gens(n, costs, year):
     carriers = ["coal", "lignite", "nuclear", "oil"]
     buses_i = n.buses.index
