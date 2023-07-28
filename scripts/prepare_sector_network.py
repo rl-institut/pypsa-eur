@@ -3576,8 +3576,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # group by carrier and sum to yield sum of elec and chp plant electricity production
         df = df.groupby(["country", "carrier"]).sum()
 
-        # add NaN rows for electrolysers + GB
-        carr = ["electrolyser"] + list(df.index.get_level_values("carrier").unique())
+        # add NaN rows for electrolysers + chp plants + GB
+        carr = ["electrolyser", "chp_gas", "chp_biomass"] + list(df.index.get_level_values("carrier").unique())
         ctrys = list(df.index.get_level_values("country").unique()) + list(set(countries) - set(countries_pac))
         multi_idx = pd.MultiIndex.from_product([ctrys, carr], names=['country', 'carrier'])
         df = df.reindex(multi_idx).sort_index(level=0)
@@ -3587,7 +3587,7 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
         # list of technologies to import
         gen_techs = ["Elec plant with coal (solid coal)", "CHP (solid coal)", "Elec plant with liquid (liquid ff)",
                      "CHP (liquid ff)", "Elec plant with gas (gas ff)", "CHP (gas ff)", "RES hydroelectric", "Nuclear",
-                     "Hydrogen"]
+                     "Hydrogen", "CHP (solid-biomass)"]
         supply_dict = {ctry: pd.concat((pd.read_csv(
             input_path_cap + f"/generation/{ctry}_supply_prod_ff.csv", decimal='.', delimiter=',',
             index_col=0).fillna(0.0)[:-1][years], pd.read_csv(
@@ -3603,7 +3603,8 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
                           "Elec plant with liquid (liquid ff)": "oil",
                           "CHP (liquid ff)": "oil",
                           "Elec plant with gas (gas ff)": "gas",
-                          "CHP (gas ff)": "gas",
+                          "CHP (gas ff)": "chp_gas",
+                          "CHP (solid-biomass)": "chp_biomass",
                           "RES hydroelectric": "hydro",
                           "Nuclear": "nuclear",
                           "Hydrogen": "electrolyser"}
