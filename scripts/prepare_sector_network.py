@@ -3702,16 +3702,13 @@ def build_sce_cap_prod(input_path_cap, output_path, indicator="capacity"):
     df.to_csv(output_path, index=True)
 
 def add_gens(n, costs, year):
-    carriers = ["coal", "lignite", "nuclear", "oil"]
+    carriers = ["coal", "lignite", "nuclear", "oil",]
     buses_i = [bus for bus in n.buses.location.unique() if bus != "EU"]
     for carrier in carriers:
-        print(carrier)
-        print(buses_i)
         eu_carrier = {"coal": "coal",
                       "lignite": "lignite",
                       "nuclear": "uranium",
-                      "oil": "oil",
-                      "gas": "gas",}
+                      "oil": "oil",}
         if carrier=="nuclear":
             c = 0
         else:
@@ -3730,12 +3727,12 @@ def add_gens(n, costs, year):
             p_nom_extendable=True,
             p_nom=0,
             p_nom_min=0,
-            efficiency=costs.at[carrier, "efficiency"],
+            efficiency=costs.at[carrier.replace("urban ",""), "efficiency"],
             efficiency2=c,
-            marginal_cost=costs.at[carrier, "efficiency"]
-            * costs.at[carrier, "VOM"],  # NB: VOM is per MWel
-            capital_cost=costs.at[carrier, "efficiency"]
-            * costs.at[carrier, "fixed"],  # NB: fixed cost is per MWel
+            marginal_cost=costs.at[carrier.replace("urban ",""), "efficiency"]
+            * costs.at[carrier.replace("urban ",""), "VOM"],  # NB: VOM is per MWel
+            capital_cost=costs.at[carrier.replace("urban ",""), "efficiency"]
+            * costs.at[carrier.replace("urban ",""), "fixed"],  # NB: fixed cost is per MWel
         )
 
     carriers = ["ror", "hydro", "PHS"]
@@ -3763,8 +3760,7 @@ def add_gens(n, costs, year):
                 carrier=carrier,
                 p_nom_extendable=True,
                 p_nom_min=0,
-                capital_cost=177345.216619,#costs.at[carrier, "capital_cost"],
-                #marginal_cost=costs.at[carrier, "marginal_cost"],
+                capital_cost=177345.216619,
                 efficiency_store=costs.at[carrier, "efficiency"],
                 efficiency_dispatch=costs.at[carrier, "efficiency"],
                 cyclic_state_of_charge=True,
