@@ -251,7 +251,10 @@ def add_CCL_constraints(n, config):
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}#, "biomass": "biofuels"}
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser",
+                       'urban central solid biomass CHP': "chp_biomass",
+                           'urban central gas CHP': 'chp_gas',
+                           'SMR':'electrolyser', 'SMR CC':'electrolyser'}
     lhs_dict = {}
     rhs_dict = {}
     for arg in args:
@@ -396,8 +399,10 @@ def add_gen_constraints(n, config):
     carrier_grouper = {'offwind-ac': 'offwind', 'offwind-dc': 'offwind',
                        'coal': 'coal & lignite', 'lignite': 'coal & lignite',
                        'OCGT': 'gas', 'CCGT': 'gas', "solar rooftop": "solar",
-                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser"}
-                       #, "biomass": "biofuels"}
+                       "ror": "hydro", "PHS": "hydro", "H2 Electrolysis": "electrolyser",
+                       'urban central solid biomass CHP': "chp_biomass",
+                       'urban central gas CHP': 'chp_gas',
+                       'SMR':'electrolyser', 'SMR CC':'electrolyser'}
     exprs_dict = {}
 
     for arg in args:
@@ -426,8 +431,9 @@ def add_gen_constraints(n, config):
             gens = n.links.rename_axis(
                 index="Link")
             # add efficiencies
-            data = [costs.loc[gen.split()[-1].split("-")[0].split()[-1]].value if gen.split()[-1].split("-")[0].split()[-1] in costs.index else 1
-                    for gen in p.coords.indexes.variables.mapping["Link"].data]
+            idx = [gen.split()[-1].split("-")[0].split()[-1] if "CHP" not in gen else re.search(r'urban (.*?)CHP', gen).group(1)+"CHP" for gen in p.coords.indexes.variables.mapping["Link"].data]
+            idx = [i.replace("CC", "SMR CC") if ("CHP" not in i) & ("CCGT" not in i) else i for i in idx]
+            data = [costs.loc[i].value if i in costs.index else 1 for i in idx]
             factor = pd.Series(data, index=p.coords.indexes.variables.mapping[
                 "Link"].data).rename_axis("Link", axis="index")
             p = p.sum(dims="snapshot") * factor
@@ -811,7 +817,7 @@ def extra_functionality(n, snapshots):
         add_BAU_constraints(n, config)
     if "SAFE" in opts and n.generators.p_nom_extendable.any():
         add_SAFE_constraints(n, config)
-    if "CCL" in opts: # and n.generators.p_nom_extendable.any():
+    if "CCL" in opts:
         add_CCL_constraints(n, config)
         add_gen_constraints(n, config)
     reserve = config["electricity"].get("operational_reserve", {})
@@ -831,7 +837,6 @@ def extra_functionality(n, snapshots):
     with open("../../../results/agg_e_min_"+str(target_year)+".txt", "w") as text_file:
         for index in n.model.constraints['agg_e_min'].indexes["group"]:
             text_file.write(str(n.model.constraints['agg_e_min'].sel(group=[index])))
-
 
 def solve_network(n, config, opts="", **kwargs):
     set_of_options = config["solving"]["solver"]["options"]
