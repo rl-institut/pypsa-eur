@@ -299,6 +299,8 @@ def add_lifetime_wind_solar(n, costs):
     for carrier in ["solar", "onwind", "offwind"]:
         gen_i = n.generators.index.str.contains(carrier)
         n.generators.loc[gen_i, "lifetime"] = costs.at[carrier, "lifetime"]
+        n.generators.loc[gen_i, "p_nom_min"] = 0
+
 
 
 def haversine(p):
@@ -3505,8 +3507,7 @@ def add_gens(n, costs, year):
         eu_carrier = {"coal": "coal",
                       "lignite": "lignite",
                       "nuclear": "uranium",
-                      "oil": "oil",
-                      "gas": "gas",}
+                      "oil": "oil",}
         if carrier=="nuclear":
             c = 0
         else:
@@ -3523,6 +3524,7 @@ def add_gens(n, costs, year):
             lifetime=100,
             p_nom_extendable=True,
             p_nom=0,
+            p_nom_min=0,
             efficiency=costs.at[carrier, "efficiency"],
             efficiency2=c,
             marginal_cost=costs.at[carrier, "efficiency"]
@@ -3540,6 +3542,7 @@ def add_gens(n, costs, year):
                 bus=buses_i,
                 carrier=carrier,
                 p_nom_extendable=True,
+                p_nom_min=0,
                 efficiency=costs.at["ror", "efficiency"],
                 capital_cost=299140.224929,
                 build_year=year,
@@ -3553,8 +3556,8 @@ def add_gens(n, costs, year):
                 bus=buses_i,
                 carrier=carrier,
                 p_nom_extendable=True,
-                capital_cost=177345.216619,#costs.at[carrier, "capital_cost"],
-                #marginal_cost=costs.at[carrier, "marginal_cost"],
+                p_nom_min=0,
+                capital_cost=177345.216619,
                 efficiency_store=costs.at[carrier, "efficiency"],
                 efficiency_dispatch=costs.at[carrier, "efficiency"],
                 cyclic_state_of_charge=True,
@@ -3718,7 +3721,7 @@ if __name__ == "__main__":
     n = set_temporal_aggregation(n, opts, solver_name)
 
     limit_type = "config"
-    co2_budget = snakemake.config["co2_budget"][snakemake.config["run"]["name"]]
+    co2_budget = snakemake.config["co2_budget"][snakemake.config["run"]["name"][:8]]
     limit = get(co2_budget, investment_year)
     for o in opts:
         if "cb" not in o:

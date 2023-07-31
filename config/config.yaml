@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "tyndp_de" # use this to keep track of runs with different settings
+  name: "tyndp_ga" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -33,7 +33,7 @@ scenario:
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - 24H-T-H-B-I-A-dist1-CCL
+  - 25H-T-H-B-I-A-dist1-CCL
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -101,7 +101,7 @@ co2_budget:
     2035: 0.3550 # (1354.8 + 299.0) / 4658.2
     2040: 0.2016 # (598.1 + 341.0) / 4658.2
     2045: 0.0838 # (7.2 + 383.0) / 4658.2
-    2050: 0.0000 # (-583.7 + 425.0) / 4658.2 = -0.0341
+    2050: 0.0600 # (-583.7 + 425.0) / 4658.2 = -0.0341
 
 electricity:
   voltages: [220., 300., 380.]
@@ -204,7 +204,7 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_5MW_offshore
-    capacity_per_sqkm: 2 # ScholzPhd Tab 4.3.1: 10MW/km^2 and assuming 20% fraction of the already restricted
+    capacity_per_sqkm: 6 # ScholzPhd Tab 4.3.1: 10MW/km^2 and assuming 20% fraction of the already restricted
     # area is available for installation of wind generators due to competing land use and likely public
     # acceptance issues.
     correction_factor: 0.8855
@@ -213,9 +213,9 @@ renewable:
     # until done more rigorously in #153
     corine: [44, 255]
     natura: true
-    ship_threshold: 400
+    ship_threshold: 200
     max_depth: 50
-    max_shore_distance: 30000
+    max_shore_distance: 55000
     excluder_resolution: 200
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
@@ -224,7 +224,7 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_5MW_offshore
-    capacity_per_sqkm: 2 # ScholzPhd Tab 4.3.1: 10MW/km^2 and assuming 20% fraction of the already restricted
+    capacity_per_sqkm: 6 # ScholzPhd Tab 4.3.1: 10MW/km^2 and assuming 20% fraction of the already restricted
     # area is available for installation of wind generators due to competing land use and likely public
     # acceptance issues.
     correction_factor: 0.8855
@@ -233,9 +233,9 @@ renewable:
     # until done more rigorously in #153
     corine: [44, 255]
     natura: true
-    ship_threshold: 400
+    ship_threshold: 200
     max_depth: 50
-    min_shore_distance: 10000
+    min_shore_distance: 5000
     excluder_resolution: 200
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
@@ -247,7 +247,7 @@ renewable:
       orientation:
         slope: 35.
         azimuth: 180.
-    capacity_per_sqkm: 1.7 # ScholzPhd Tab 4.3.1: 170 MW/km^2 and assuming 1% of the area can be used for solar PV panels
+    capacity_per_sqkm: 4 # ScholzPhd Tab 4.3.1: 170 MW/km^2 and assuming 1% of the area can be used for solar PV panels
     # Correction factor determined by comparing uncorrected area-weighted full-load hours to those
     # published in Supplementary Data to
     # Pietzcker, Robert Carl, et al. "Using the sun to decarbonize the power
