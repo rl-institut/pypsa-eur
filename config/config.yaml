@@ -10,7 +10,7 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "pac2_0" # use this to keep track of runs with different settings
+  name: "pac2_0_106" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
   shared_resources: false # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
@@ -25,7 +25,7 @@ scenario:
   - v1.5
 #  - v1.5
   clusters:  # number of nodes in Europe, any integer between 37 (1 node per country-zone) and several hundred
-  - 50
+  - 106
 #  - 128
 #  - 256
 #  - 512
@@ -64,6 +64,34 @@ scenario:
 countries: [ 'AT', 'BE', 'BG', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK']
 # countries not in PAC: 'AL', 'BA', 'CH', 'GB', 'ME', 'MK', 'NO', 'RS'
 countries_pac: [ 'AT', 'BE', 'BG', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK']
+
+focus_weights:
+  AT: 0.02830
+  BE: 0.02830
+  BG: 0.01887
+  HR: 0.01887
+  CZ: 0.01887
+  DK: 0.01887
+  EE: 0.00943
+  FI: 0.01887
+  FR: 0.13208
+  DE: 0.15094
+  GR: 0.03774
+  HU: 0.02830
+  IE: 0.00943
+  IT: 0.04717
+  LV: 0.00943
+  LT: 0.00943
+  LU: 0.00943
+  NL: 0.03774
+  PL: 0.06604
+  PT: 0.02830
+  RO: 0.03774
+  SK: 0.01887
+  SI: 0.00943
+  ES: 0.06604
+  SE: 0.02830
+  GB: 0.11321
 
 snapshots:
   start: "2013-01-01"
@@ -478,7 +506,7 @@ sector:
   methanation: true
   helmeth: false
   coal_cc: false
-  dac: false
+  dac: true
   co2_vent: false
   allam_cycle: false
   SMR: true
