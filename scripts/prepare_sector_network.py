@@ -3608,10 +3608,18 @@ if __name__ == "__main__":
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
 
+    if "de" is in snakemake.config["run"]["name"]:
+        tyndp_name = "Distributed Energy"
+    elif "ga" is in snakemake.config["run"]["name"]:
+        tyndp_name = "Global Ambition"
+    else:
+        raise NotImplementedError(f"Please specify run name to allow scenario allocation"
+                                  f"such that name contains: ga: Global Ambition or de: Distributed Energy")
+
     # import total tyndp scenario data as df
     file_path = snakemake.input.tyndp_demand
     sheet_name = 'OUTPUT_ALL'
-    df_sce_data = import_sce_data(file_path, sheet_name)
+    df_sce_data = import_sce_data(file_path, sheet_name, tyndp_name)
 
     patch_electricity_network(n)
 
@@ -3678,7 +3686,7 @@ if __name__ == "__main__":
         add_heat(n, costs)
 
     scale_district_heating_dem(n, snakemake.input.tyndp_dh_share,
-                               investment_year)
+                               investment_year, tyndp_name)
 
     if "B" in opts:
         add_biomass(n, costs)
@@ -3715,7 +3723,7 @@ if __name__ == "__main__":
     output_path = snakemake.input.resources_dir
 
     # creates csv with installed capacities per target year aggregated to country level
-    build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path)
+    build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path, tyndp_name)
 
     solver_name = snakemake.config["solving"]["solver"]["name"]
     n = set_temporal_aggregation(n, opts, solver_name)

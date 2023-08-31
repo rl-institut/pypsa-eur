@@ -2,9 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-sce_name = 'Global Ambition'
-
-def import_sce_data(file_path, sheet_name):
+def import_sce_data(file_path, sheet_name, sce_name):
 
     df = pd.read_excel(file_path, sheet_name=sheet_name)
 
@@ -175,7 +173,7 @@ def distribute_sce_demand_by_pes_layout(sce_demand_nat, pes_demand_reg, pop_layo
 
     return sce_demand_reg
 
-def scale_district_heating_dem(n, dh_share, year):
+def scale_district_heating_dem(n, dh_share, year, sce_name):
 
     # Code from branch https://github.com/PyPSA/pypsa-eur-sec/tree/PAC
 
@@ -198,7 +196,7 @@ def scale_district_heating_dem(n, dh_share, year):
     print("district heating share is scaled up by; ", scale_factor_dh)
 
 
-def build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path):
+def build_sce_caps_and_prods(input_path_cap, input_path_h2, output_path, sce_name):
 
     carrier_mapping = {'wind onshore': 'onwind',
                        'onshore wind_stand alone': 'onwind',
