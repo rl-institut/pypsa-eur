@@ -3608,9 +3608,9 @@ if __name__ == "__main__":
         pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0) * nyears
     )
 
-    if "de" is in snakemake.config["run"]["name"]:
+    if "de" in snakemake.config["run"]["name"]:
         tyndp_name = "Distributed Energy"
-    elif "ga" is in snakemake.config["run"]["name"]:
+    elif "ga" in snakemake.config["run"]["name"]:
         tyndp_name = "Global Ambition"
     else:
         raise NotImplementedError(f"Please specify run name to allow scenario allocation"
