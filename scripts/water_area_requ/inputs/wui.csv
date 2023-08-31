@@ -1,0 +1,38 @@
+Fuel type,Cooling,Technology,Median,Min,Max
+Nuclear,Tower,Generic,2.54,2.2,3.2
+Nuclear,Once-through,Generic,1.02,0.38,1.51
+Nuclear,Pond,Generic,2.31,2.12,2.73
+Natural Gas and Oil,Tower,Combined cycle,0.78,0.49,1.14
+Natural Gas and Oil,Tower,Steam,3.13,2.51,4.43
+Natural Gas and Oil,Tower,Combined cycle with CCS,1.49,1.43,1.54
+Natural Gas and Oil,Once-through,Combined cycle,0.38,0.08,0.38
+Natural Gas and Oil,Once-through,Steam,0.91,0.36,1.1
+Natural Gas and Oil,Pond,Combined cycle,0.91,0.91,0.91
+Natural Gas and Oil,Dry,Combined cycle,0.01,0,0.02
+Natural Gas and Oil,Inlet,Steam,1.29,0.3,2.27
+Coal,Tower,Generic,2.6,1.82,4.16
+Coal,Tower,Subcritical,1.81,1.49,2.51
+Coal,Tower,Supercritical,1.87,1.68,2.25
+Coal,Tower,IGCC,1.44,1.2,1.66
+Coal,Tower,Subcritical with CCS,3.49,3.41,3.57
+Coal,Tower,Supercritical with CCS,3.2,3.09,3.43
+Coal,Tower,IGCC with CCS,2.08,1.98,2.29
+Coal,Once-through,Generic,0.95,0.38,1.2
+Coal,Once-through,Subcritical,0.43,0.27,0.52
+Coal,Once-through,Supercritical,0.39,0.24,0.47
+Coal,Pond,Generic,2.06,1.14,2.65
+Coal,Pond,Subcritical,2.95,2.79,3.04
+Coal,Pond,Supercritical,0.16,0.02,0.24
+Hydropower,N/A,Aggregated in-stream and reservoir,17,5.39,68.14
+PV,N/A,Utility-scale PV,0.1,0,0.12
+Biomass,Tower,Steam,2.09,1.82,3.65
+Biomass,Tower,Biogas,0.89,0.89,0.89
+Biomass,Once-through,Steam,1.14,1.14,1.14
+Biomass,Pond,Steam,1.48,1.14,1.82
+Biomass,Dry,Biogas,0.13,0.13,0.13
+CSP,Tower,Trough,3.27,2.74,4
+CSP,Tower,Power Tower,2.98,2.8,3.26
+CSP,Tower,Fresnel,3.79,3.79,3.79
+CSP,Dry,Trough,0.3,0.16,0.3
+CSP,Dry,Power Tower,0.1,0.1,0.1
+CSP,Hybrid,Trough,1.28,0.4,1.31
